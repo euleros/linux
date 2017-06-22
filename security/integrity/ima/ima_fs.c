@@ -272,7 +272,7 @@ static const struct file_operations ima_ascii_measurements_ops = {
 	.release = seq_release,
 };
 
-static ssize_t ima_read_policy(char *path)
+static ssize_t ima_read_file(char *path, enum kernel_read_file_id file_id)
 {
 	void *data;
 	char *datap;
@@ -285,16 +285,22 @@ static ssize_t ima_read_policy(char *path)
 	datap = path;
 	strsep(&datap, "\n");
 
-	rc = kernel_read_file_from_path(path, &data, &size, 0, READING_POLICY);
+	rc = kernel_read_file_from_path(path, &data, &size, 0, file_id);
 	if (rc < 0) {
 		pr_err("Unable to open file: %s (%d)", path, rc);
 		return rc;
 	}
 
 	datap = data;
-	while (size > 0 && (p = strsep(&datap, "\n"))) {
-		pr_debug("rule: %s\n", p);
-		rc = ima_parse_add_rule(p);
+	while (size > 0) {
+		if (file_id == READING_POLICY) {
+			p = strsep(&datap, "\n");
+			if (p == NULL)
+				break;
+
+			pr_debug("rule: %s\n", p);
+			rc = ima_parse_add_rule(p);
+		}
 		if (rc < 0)
 			break;
 		size -= rc;
@@ -334,7 +340,7 @@ static ssize_t ima_write_policy(struct file *file, const char __user *buf,
 		goto out_free;
 
 	if (data[0] == '/') {
-		result = ima_read_policy(data);
+		result = ima_read_file(data, READING_POLICY);
 	} else if (ima_appraise & IMA_APPRAISE_POLICY) {
 		pr_err("IMA: signed policy file (specified as an absolute pathname) required\n");
 		integrity_audit_msg(AUDIT_INTEGRITY_STATUS, NULL, NULL,
