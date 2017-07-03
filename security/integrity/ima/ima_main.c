@@ -253,6 +253,14 @@ static int process_measurement(struct file *file, char *buf, loff_t size,
 		goto out_digsig;
 	}
 
+	if (!ima_disable_digest_check) {
+		if (ima_lookup_loaded_digest(iint->ima_hash->digest)) {
+			action ^= IMA_MEASURE;
+			iint->flags |= IMA_MEASURED;
+			iint->measured_pcrs |= (0x1 << pcr);
+		}
+	}
+
 	if (!pathbuf)	/* ima_rdwr_violation possibly pre-fetched */
 		pathname = ima_d_path(&file->f_path, &pathbuf, filename);
 
