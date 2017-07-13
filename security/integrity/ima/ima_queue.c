@@ -42,6 +42,11 @@ struct ima_h_table ima_htable = {
 	.queue[0 ... IMA_MEASURE_HTABLE_SIZE - 1] = HLIST_HEAD_INIT
 };
 
+struct ima_h_table ima_digests_htable = {
+	.len = ATOMIC_LONG_INIT(0),
+	.queue[0 ... IMA_MEASURE_HTABLE_SIZE - 1] = HLIST_HEAD_INIT
+};
+
 /* mutex protects atomicity of extending measurement list
  * and extending the TPM PCR aggregate. Since tpm_extend can take
  * long (and the tpm driver uses a mutex), we can't use the spinlock.
@@ -211,4 +216,38 @@ int ima_restore_measurement_entry(struct ima_template_entry *entry)
 	result = ima_add_digest_entry(entry, 0);
 	mutex_unlock(&ima_extend_list_mutex);
 	return result;
+}
+
+struct ima_digest *ima_lookup_loaded_digest(u8 *digest)
+{
+	struct ima_digest *d = NULL;
+	int digest_len = hash_digest_size[ima_hash_algo];
+	unsigned int key = ima_hash_key(digest);
+
+	rcu_read_lock();
+	hlist_for_each_entry_rcu(d, &ima_digests_htable.queue[key], hnext) {
+		if (memcmp(d->digest, digest, digest_len) == 0)
+			break;
+	}
+	rcu_read_unlock();
+	return d;
+}
+
+int ima_add_digest_data_entry(u8 *digest)
+{
+	struct ima_digest *d = ima_lookup_loaded_digest(digest);
+	int digest_len = hash_digest_size[ima_hash_algo];
+	unsigned int key = ima_hash_key(digest);
+
+	if (d)
+		return -EEXIST;
+
+	d = kmalloc(sizeof(*d) + digest_len, GFP_KERNEL);
+	if (d == NULL)
+		return -ENOMEM;
+
+	memcpy(d->digest, digest, digest_len);
+	hlist_add_head_rcu(&d->hnext, &ima_digests_htable.queue[key]);
+	atomic_long_inc(&ima_digests_htable.len);
+	return 0;
 }
