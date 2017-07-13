@@ -42,6 +42,11 @@ struct ima_h_table ima_htable = {
 	.queue[0 ... IMA_MEASURE_HTABLE_SIZE - 1] = HLIST_HEAD_INIT
 };
 
+struct ima_h_table ima_digests_htable = {
+	.len = ATOMIC_LONG_INIT(0),
+	.queue[0 ... IMA_MEASURE_HTABLE_SIZE - 1] = HLIST_HEAD_INIT
+};
+
 /* mutex protects atomicity of extending measurement list
  * and extending the TPM PCR aggregate. Since tpm_extend can take
  * long (and the tpm driver uses a mutex), we can't use the spinlock.
@@ -211,4 +216,61 @@ int ima_restore_measurement_entry(struct ima_template_entry *entry)
 	result = ima_add_digest_entry(entry, 0);
 	mutex_unlock(&ima_extend_list_mutex);
 	return result;
+}
+
+struct ima_digest *ima_lookup_loaded_digest(u8 *digest, u16 digest_algo)
+{
+	struct ima_digest *d = NULL;
+	int digest_len = hash_digest_size[digest_algo];
+	unsigned int key = ima_hash_key(digest);
+	u8 *digest_ptr;
+
+	rcu_read_lock();
+	hlist_for_each_entry_rcu(d, &ima_digests_htable.queue[key], hnext) {
+		digest_ptr = d->digest;
+
+		if (digest_algo != ima_hash_algo) {
+			if (!(d->flags & DIGEST_FLAG_DIGEST_ALGO))
+				continue;
+			if (digest_algo != *(u16 *)d->digest)
+				continue;
+			digest_ptr += sizeof(u16);
+		}
+
+		if (memcmp(digest_ptr, digest, digest_len) == 0)
+			break;
+	}
+	rcu_read_unlock();
+	return d;
+}
+
+int ima_add_digest_data_entry(u8 *digest, u16 digest_algo, u8 flags, u16 type)
+{
+	struct ima_digest *d;
+	int digest_len = hash_digest_size[digest_algo], digest_offset = 0;
+	unsigned int key = ima_hash_key(digest);
+
+	d = ima_lookup_loaded_digest(digest, digest_algo);
+	if (d) {
+		d->flags |= flags;
+		return -EEXIST;
+	}
+
+	if (digest_algo != ima_hash_algo)
+		digest_offset = sizeof(u16);
+
+	d = kmalloc(sizeof(*d) + digest_offset + digest_len, GFP_KERNEL);
+	if (d == NULL)
+		return -ENOMEM;
+
+	d->flags = flags;
+	d->type = type;
+
+	if (digest_offset)
+		*(u16 *)d->digest = digest_algo;
+
+	memcpy(d->digest + digest_offset, digest, digest_len);
+	hlist_add_head_rcu(&d->hnext, &ima_digests_htable.queue[key]);
+	atomic_long_inc(&ima_digests_htable.len);
+	return 0;
 }

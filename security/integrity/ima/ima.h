@@ -107,6 +107,15 @@ struct ima_queue_entry {
 };
 extern struct list_head ima_measurements;	/* list of all measurements */
 
+#define DIGEST_FLAG_DIGEST_ALGO 0x01
+
+struct ima_digest {
+	struct hlist_node hnext;
+	u8 flags;
+	u16 type;
+	u8 digest[0];
+};
+
 /* Some details preceding the binary serialized measurement list */
 struct ima_kexec_hdr {
 	u16 version;
@@ -150,6 +159,8 @@ void ima_print_digest(struct seq_file *m, u8 *digest, u32 size);
 struct ima_template_desc *ima_template_desc_current(void);
 int ima_restore_measurement_entry(struct ima_template_entry *entry);
 int ima_restore_measurement_list(loff_t bufsize, void *buf);
+struct ima_digest *ima_lookup_loaded_digest(u8 *digest, u16 digest_algo);
+int ima_add_digest_data_entry(u8 *digest, u16 digest_algo, u8 flags, u16 type);
 int ima_measurements_show(struct seq_file *m, void *v);
 unsigned long ima_get_binary_runtime_size(void);
 int ima_init_template(void);
@@ -166,6 +177,7 @@ struct ima_h_table {
 	struct hlist_head queue[IMA_MEASURE_HTABLE_SIZE];
 };
 extern struct ima_h_table ima_htable;
+extern struct ima_h_table ima_digests_htable;
 
 static inline unsigned long ima_hash_key(u8 *digest)
 {
