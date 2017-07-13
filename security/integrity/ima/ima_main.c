@@ -29,6 +29,12 @@
 
 int ima_initialized;
 
+#ifdef CONFIG_IMA_DIGEST_LIST
+static int ima_disable_digest_check;
+#else
+static int ima_disable_digest_check = 1;
+#endif
+
 #ifdef CONFIG_IMA_APPRAISE
 int ima_appraise = IMA_APPRAISE_ENFORCE;
 #else
@@ -171,6 +177,9 @@ static int process_measurement(struct file *file, char *buf, loff_t size,
 	bool violation_check;
 	enum hash_algo hash_algo;
 
+	if (func == DIGEST_LIST_CHECK && !ima_policy_flag)
+		ima_disable_digest_check = 1;
+
 	if (!ima_policy_flag || !S_ISREG(inode->i_mode))
 		return 0;
 
@@ -181,6 +190,9 @@ static int process_measurement(struct file *file, char *buf, loff_t size,
 	action = ima_get_action(inode, mask, func, &pcr);
 	violation_check = ((func == FILE_CHECK || func == MMAP_CHECK) &&
 			   (ima_policy_flag & IMA_MEASURE));
+	if (func == DIGEST_LIST_CHECK && !(action & IMA_MEASURE))
+		ima_disable_digest_check = 1;
+
 	if (!action && !violation_check)
 		return 0;
 
@@ -375,7 +387,8 @@ static int read_idmap[READING_MAX_ID] = {
 	[READING_MODULE] = MODULE_CHECK,
 	[READING_KEXEC_IMAGE] = KEXEC_KERNEL_CHECK,
 	[READING_KEXEC_INITRAMFS] = KEXEC_INITRAMFS_CHECK,
-	[READING_POLICY] = POLICY_CHECK
+	[READING_POLICY] = POLICY_CHECK,
+	[READING_DIGEST_LIST] = DIGEST_LIST_CHECK
 };
 
 /**
