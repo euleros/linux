@@ -227,3 +227,14 @@ config IMA_APPRAISE_SIGNED_INIT
 	default n
 	help
 	   This option requires user-space init to be signed.
+
+config IMA_DIGEST_LIST
+	bool "Measure files depending on uploaded digest lists"
+	depends on IMA
+	default n
+	help
+	   This option allows users to load digest lists. If a measured
+	   file has the same digest of one from loaded lists, IMA will
+	   not create a new measurement entry. A measurement entry will
+	   be created only when digest lists are loaded (this entry
+	   contains the digest of digest lists metadata).
