@@ -1,0 +1,245 @@
+============
+Digest Lists
+============
+
+INTRODUCTION
+============
+
+Integrity Measurement Architecture (IMA) reports or enforces the integrity
+of a system, by measuring files accessed with the execve(), mmap() and
+open() system calls. For reporting, IMA relies on the TPM for the
+protection of the measurement list. For enforcing, it relies on reference
+values stored for each file in the local system and protected with HMAC or
+a digital signature.
+
+The Digest Lists extension takes a different approach than existing IMA:
+instead of creating a measurement entry when a file is accessed, it
+preloads reference measurements before files are accessed and adds a new
+measurement entry only if the digest of an accessed file is not found in
+the reference database. It also uses reference measurements, instead of
+file signatures, for appraisal verification.
+
+Advantages:
+- system performance: the TPM is used only for reference values and unknown
+  files;
+
+- efficiency: only one signature is verified for many digests, as opposed
+  to one signature for each file;
+
+- availability of reference measurements: Linux vendors already provide
+  signed digest lists; supporting file signatures requires changes to the
+  packages and the infrastructure to manage the repositories;
+
+- predictability of PCR values: since PCR values change only when unknown
+  files are accessed, it is possible to define sealing policies for TPM
+  keys and data based on the integrity of the software being used by the
+  local system.
+
+Disadvantages:
+- loss of information: which and when files are accessed is not reported;
+  to mitigate this issue and still maintain predictability, the desired
+  set of files and temporal sequence can be preloaded together with digest
+  lists; these conditions can be verified and the result can be reported.
+
+
+
+ARCHITECTURE
+============
+
+The main addition to IMA is a new hash table (similar to that used to check
+for duplicate measurement entries), which contains file digests instead of
+digests of measurement entries.
+
+File digests can be uploaded to IMA through a new securityfs file named
+'digest_list_data' and must be embedded in a data structure called compact
+list.
+
+A user space parser is responsible to convert digest lists from the
+original format defined by the software vendor (e.g. RPM package header) to
+the compact list format.
+
+Digests of digest lists, together with additional metadata (e.g. digital
+signature) are uploaded to the hash table through the new securityfs file
+named 'digest_list_metadata' before digest lists are accessed by the
+parser. With this solution, the PCR is extended only once with the digest
+of metadata and digest lists can be appraised, because their digest has
+been already uploaded (is part of metadata). Parser metadata are loaded
+directly by the kernel at initialization time.
+
+Security measures have been implemented in IMA to ensure that the parser
+uploads to IMA only digests from digest lists included in the metadata. The
+digest structure added to the hash table contains the data type to
+distinguish parser and digest list digests from file digests. The
+securityfs files can be accessed only by a process if the digest of the
+executable is found in the hash table and the digest type is parser. IMA
+allows the parser to upload digests only if the parser accesses files whose
+digest type is digest list.
+
+Finally, digest lists can be used for measurement and appraisal only if
+metadata and digest list themselves have been measured and appraised.
+Digest lookup is disabled for each missing action until reboot.
+
+
+
+DATA STRUCTURES
+===============
+
+Metadata:
+
+data_algo[2]
+data_type[2]
+data_type_ext_len[4] data_type_ext[data_type_ext_len]
+data_digest_algo[2] data_digest_len[4] data_digest[data_digest_len]
+data_signature_len[4] data_signature[data_signature_len]
+data_file_path_len[4] data_file_path[data_file_path_len]
+data_length[4]
+
+- data_algo: algorithm of the digests to be uploaded
+- data_type: type of digest list
+- data_type_ext: additional data associated to the data type
+- data_digest_algo: algorithm of data_digest
+- data_digest: digest of the file containing the digest list
+- data_signature: signature of the file containing the digest list
+- data_file_path: pathname of the parser or digest list
+- data_length: length of the digest list (excluding data required for
+  signature verification)
+
+data_algo, data_type, data_digest_algo and length fields are in little
+endian.
+
+Header metadata:
+data_type: 0
+data_type_ext format: version[2]
+
+Digest list metadata:
+data_type: 1
+data_type_ext format: sub_type[4]
+
+Digest list key:
+data_type: 2
+
+Parser metadata:
+data_type: 3
+data_type_ext format: algo[2] digest[digest_len] [version] ~parser~\n
+
+Regular file:
+data_type: 4
+
+Compact list:
+
+entry_id[2] algo[2] count[4] data_len[4]
+data[data_len]
+entry_id[2] algo[2] count[4] data_len[4]
+data[data_len]
+...
+
+- entry_id: type of entry
+- algo: digest algorithm
+- count: number of digests
+- data_len: sum of digest length
+
+entry_id, algo, count and data_len are in little endian.
+
+Compact list of digests of mutable files:
+entry_id: 0
+
+Compact list of digests of immutable files:
+entry_id: 1
+
+Compact list of digests of digest lists:
+entry_id: 2
+
+
+
+CONFIGURATION FILES
+===================
+
+The default directory where metadata and digest lists are stored is
+/etc/ima/digest_lists. This directory should contain:
+
+parser_data: parser data (see data_type_ext format)
+parser_data.sig: parser data signature
+parser_metadata: header metadata + parser metadata
+metadata: header metadata + digest list metadata
+compact-*: compact digest lists
+rpm-*: RPM package headers
+*.deb: DEB packages
+*-key.gpg: digest list key
+
+These files and the parser should be included in the initial ram disk.
+
+
+
+KERNEL_PARAMETERS
+=================
+
+ima_digest_list_actions: IMA action for which digest lookup is enabled
+
+Example: ima_digest_list_actions=measure,appraise
+
+ima_digest_list_pcr: PCR to be extended with metadata and unknown files
+
+Example: ima_digest_list_pcr=+11 (add + to create standard meas. list)
+
+
+
+MEASUREMENT LIST
+================
+
+If IMA loads the digest lists from the initial ram disk, and the kernel
+parameter 'ima_digest_list_pcr=11' is specified, the measurement list
+should look like:
+
+11 <digest> ima-ng sha1:<digest> boot_aggregate
+11 <digest> ima-ng sha256:<digest> /etc/ima/digest_lists/parser_metadata
+11 <digest> ima-ng sha256:<digest> /etc/ima/digest_lists/metadata
+...
+
+If the kernel parameter 'ima_digest_list_pcr=+11' is specified, the
+measurement list should look like:
+
+10 <digest> ima-ng sha1:<digest> boot_aggregate
+11 <digest> ima-ng sha1:<digest> boot_aggregate
+10 <digest> ima-ng sha256:<digest> /etc/ima/digest_lists/parser_metadata
+11 <digest> ima-ng sha256:<digest> /etc/ima/digest_lists/parser_metadata
+10 <digest> ima-ng sha256:<digest> /usr/bin/upload_digest_lists
+10 <digest> ima-ng sha256:<digest> /etc/ima/digest_lists/metadata
+11 <digest> ima-ng sha256:<digest> /etc/ima/digest_lists/metadata
+10 <digest> ima-ng sha256:<digest> /etc/ima/digest_lists/<digest list>
+...
+10 <digest> ima-ng sha256:<digest> /usr/lib/systemd/systemd
+
+
+
+APPRAISAL
+=========
+
+Current appraisal verification consists on comparing the calculated digest
+of an accessed file with the value of the security.ima extended attribute.
+With digest lists, appraisal verification is done by searching the
+calculated digest in the hash table. Access to unauthorized files is
+prevented by verifying the digital signature of digest lists.
+
+For mutable files, IMA writes the current digest to security.ima so that
+next file accesses are allowed even if the files have been modified. For
+immutable files, IMA writes security.ima only if also additional extended
+attributes are protected by EVM, so that LSM extended attributes can be
+reliably associated to a specific file.
+
+
+
+PGP SIGNATURES
+==============
+
+RPM package headers and DEB repository information are signed with PGP. A
+prerequisite for verifying PGP signatures is to apply the PGP patches to
+the kernel sources, enable:
+
+CONFIG_PGP_LIBRARY=y
+CONFIG_PGP_KEY_PARSER=y
+CONFIG_PGP_TEST_KEY=y
+CONFIG_PGP_PRELOAD=y
+CONFIG_PGP_PRELOAD_PUBLIC_KEYS=y
+
+and create a file named 'pubring.gpg' in the kernel sources directory
+containing the PGP public keys required for digital signature verification.
