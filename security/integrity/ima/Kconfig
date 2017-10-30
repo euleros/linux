@@ -227,3 +227,22 @@ config IMA_APPRAISE_SIGNED_INIT
 	default n
 	help
 	   This option requires user-space init to be signed.
+
+config IMA_DIGEST_LIST
+	bool "Measure/appraise/audit files depending on uploaded digest lists"
+	depends on IMA
+	default n
+	help
+	   This option allows users to load digest lists. If a measured file
+	   has the same digest of one from loaded lists, IMA will not create
+	   a new measurement entry or an audit log. They will be created only
+	   when digest lists are loaded. If appraisal is enabled, access will
+	   be permitted if the digest is in the digest list. File updates
+	   will be permitted if, in addition, the digest is marked as mutable.
+
+config IMA_DIGEST_LIST_METADATA_PATH
+	string "IMA digest list metadata path"
+	depends on IMA_DIGEST_LIST
+	default "/etc/ima/digest_lists/metadata"
+	help
+	   This option defines IMA digest list metadata path.

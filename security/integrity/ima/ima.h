@@ -158,6 +158,18 @@ int ima_restore_measurement_entry(struct ima_template_entry *entry);
 int ima_restore_measurement_list(loff_t bufsize, void *buf);
 struct ima_digest *ima_lookup_loaded_digest(u8 *digest);
 int ima_add_digest_data_entry(u8 *digest, u8 is_mutable);
+#ifdef CONFIG_IMA_DIGEST_LIST
+void __init ima_load_digest_list_metadata(void);
+ssize_t ima_parse_digest_list_metadata(loff_t size, void *buf);
+#else
+static inline void ima_load_digest_list_metadata(void)
+{
+}
+static inline ssize_t ima_parse_digest_list_metadata(loff_t size, void *buf)
+{
+	return -ENOTSUPP;
+}
+#endif
 int ima_measurements_show(struct seq_file *m, void *v);
 unsigned long ima_get_binary_runtime_size(void);
 int ima_init_template(void);
