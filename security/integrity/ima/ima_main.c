@@ -29,6 +29,12 @@
 
 int ima_initialized;
 
+#ifdef CONFIG_IMA_DIGEST_LIST
+static int ima_disable_digest_lookup;
+#else
+static int ima_disable_digest_lookup = IMA_DO_MASK & ~IMA_APPRAISE_SUBMASK;
+#endif
+
 #ifdef CONFIG_IMA_APPRAISE
 int ima_appraise = IMA_APPRAISE_ENFORCE;
 #else
@@ -168,12 +174,20 @@ static int process_measurement(struct file *file, char *buf, loff_t size,
 	char *pathbuf = NULL;
 	char filename[NAME_MAX];
 	const char *pathname = NULL;
-	int rc = -ENOMEM, action, must_appraise;
+	int rc = -ENOMEM, action, action_done, must_appraise, digest_lookup;
 	int pcr = CONFIG_IMA_MEASURE_PCR_IDX;
+	struct ima_digest *found_digest = NULL;
 	struct evm_ima_xattr_data *xattr_value = NULL;
 	int xattr_len = 0;
 	bool violation_check;
 	enum hash_algo hash_algo;
+	int disable_mask = (func == DIGEST_LIST_CHECK) ?
+			   IMA_DO_MASK & ~IMA_APPRAISE_SUBMASK :
+			   IMA_DO_MASK & ~(IMA_APPRAISE | IMA_APPRAISE_SUBMASK);
+
+	if ((func == DIGEST_LIST_METADATA_CHECK || func == DIGEST_LIST_CHECK) &&
+	    !ima_policy_flag)
+		ima_disable_digest_lookup = disable_mask;
 
 	if (!ima_policy_flag || !S_ISREG(inode->i_mode))
 		return 0;
@@ -185,6 +199,9 @@ static int process_measurement(struct file *file, char *buf, loff_t size,
 	action = ima_get_action(inode, mask, func, &pcr);
 	violation_check = ((func == FILE_CHECK || func == MMAP_CHECK) &&
 			   (ima_policy_flag & IMA_MEASURE));
+	if (func == DIGEST_LIST_METADATA_CHECK || func == DIGEST_LIST_CHECK)
+		ima_disable_digest_lookup |= (~action & disable_mask);
+
 	if (!action && !violation_check)
 		return 0;
 
@@ -241,6 +258,21 @@ static int process_measurement(struct file *file, char *buf, loff_t size,
 	rc = ima_collect_measurement(iint, file, buf, size, hash_algo);
 	if (rc != 0 && rc != -EBADF && rc != -EINVAL)
 		goto out_digsig;
+
+	digest_lookup = action & ~ima_disable_digest_lookup;
+	if (digest_lookup) {
+		found_digest = ima_lookup_loaded_digest(iint->ima_hash->digest);
+		if (found_digest) {
+			action_done = digest_lookup & (IMA_MEASURE | IMA_AUDIT);
+			action &= ~action_done;
+			iint->flags |= (action_done << 1);
+
+			if (!(digest_lookup & IMA_APPRAISE))
+				found_digest = NULL;
+			if (digest_lookup & IMA_MEASURE)
+				iint->measured_pcrs |= (0x1 << pcr);
+		}
+	}
 
 	if (!pathbuf)	/* ima_rdwr_violation possibly pre-fetched */
 		pathname = ima_d_path(&file->f_path, &pathbuf, filename);
@@ -378,7 +410,9 @@ static int read_idmap[READING_MAX_ID] = {
 	[READING_MODULE] = MODULE_CHECK,
 	[READING_KEXEC_IMAGE] = KEXEC_KERNEL_CHECK,
 	[READING_KEXEC_INITRAMFS] = KEXEC_INITRAMFS_CHECK,
-	[READING_POLICY] = POLICY_CHECK
+	[READING_POLICY] = POLICY_CHECK,
+	[READING_DIGEST_LIST_METADATA] = DIGEST_LIST_METADATA_CHECK,
+	[READING_DIGEST_LIST] = DIGEST_LIST_CHECK
 };
 
 /**

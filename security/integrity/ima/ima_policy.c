@@ -127,9 +127,20 @@ static struct ima_rule_entry default_measurement_rules[] __ro_after_init = {
 	{.action = MEASURE, .func = MODULE_CHECK, .flags = IMA_FUNC},
 	{.action = MEASURE, .func = FIRMWARE_CHECK, .flags = IMA_FUNC},
 	{.action = MEASURE, .func = POLICY_CHECK, .flags = IMA_FUNC},
+#ifdef CONFIG_IMA_DIGEST_LIST
+	{.action = MEASURE, .func = DIGEST_LIST_METADATA_CHECK,
+	 .flags = IMA_FUNC},
+	{.action = MEASURE, .func = DIGEST_LIST_CHECK, .flags = IMA_FUNC},
+#endif
 };
 
 static struct ima_rule_entry default_appraise_rules[] __ro_after_init = {
+#ifdef CONFIG_IMA_DIGEST_LIST
+	{.action = APPRAISE, .func = DIGEST_LIST_METADATA_CHECK,
+	 .flags = IMA_FUNC},
+	{.action = APPRAISE, .func = DIGEST_LIST_CHECK,
+	 .flags = IMA_FUNC | IMA_DIGSIG_REQUIRED},
+#endif
 	{.action = DONT_APPRAISE, .fsmagic = PROC_SUPER_MAGIC, .flags = IMA_FSMAGIC},
 	{.action = DONT_APPRAISE, .fsmagic = SYSFS_MAGIC, .flags = IMA_FSMAGIC},
 	{.action = DONT_APPRAISE, .fsmagic = DEBUGFS_MAGIC, .flags = IMA_FSMAGIC},
@@ -699,6 +710,11 @@ static int ima_parse_rule(char *rule, struct ima_rule_entry *entry)
 				entry->func = KEXEC_INITRAMFS_CHECK;
 			else if (strcmp(args[0].from, "POLICY_CHECK") == 0)
 				entry->func = POLICY_CHECK;
+			else if (strcmp(args[0].from, "DIGEST_LIST_CHECK") == 0)
+				entry->func = DIGEST_LIST_CHECK;
+			else if (strcmp(args[0].from,
+				 "DIGEST_LIST_METADATA_CHECK") == 0)
+				entry->func = DIGEST_LIST_METADATA_CHECK;
 			else
 				result = -EINVAL;
 			if (!result)
