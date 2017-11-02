@@ -365,6 +365,7 @@ static int get_subaction(struct ima_rule_entry *rule, enum ima_hooks func)
  * @func: IMA hook identifier
  * @mask: requested action (MAY_READ | MAY_WRITE | MAY_APPEND | MAY_EXEC)
  * @pcr: set the pcr to extend
+ * @digest_mask: unset actions for which digest lookup should be enabled
  *
  * Measure decision based on func/mask/fsmagic and LSM(subj/obj/type)
  * conditions.
@@ -374,7 +375,7 @@ static int get_subaction(struct ima_rule_entry *rule, enum ima_hooks func)
  * than writes so ima_match_policy() is classical RCU candidate.
  */
 int ima_match_policy(struct inode *inode, enum ima_hooks func, int mask,
-		     int flags, int *pcr)
+		     int flags, int *pcr, int *digest_mask)
 {
 	struct ima_rule_entry *entry;
 	int action = 0, actmask = flags | (flags << 1);
@@ -401,6 +402,8 @@ int ima_match_policy(struct inode *inode, enum ima_hooks func, int mask,
 
 		if ((pcr) && (entry->flags & IMA_PCR))
 			*pcr = entry->pcr;
+		if (digest_mask && (entry->flags & IMA_SEARCH_DIGEST_LIST))
+			*digest_mask &= (~entry->action & IMA_DO_MASK);
 
 		if (!actmask)
 			break;
@@ -421,8 +424,10 @@ void ima_update_policy_flag(void)
 	struct ima_rule_entry *entry;
 
 	list_for_each_entry(entry, ima_rules, list) {
+		int digest_list = entry->flags & IMA_SEARCH_DIGEST_LIST;
+
 		if (entry->action & IMA_DO_MASK)
-			ima_policy_flag |= entry->action;
+			ima_policy_flag |= (entry->action | digest_list);
 	}
 
 	ima_appraise |= temp_ima_appraise;
@@ -540,7 +545,7 @@ enum {
 	Opt_uid_gt, Opt_euid_gt, Opt_fowner_gt,
 	Opt_uid_lt, Opt_euid_lt, Opt_fowner_lt,
 	Opt_appraise_type, Opt_permit_directio,
-	Opt_pcr
+	Opt_pcr, Opt_digest_list
 };
 
 static match_table_t policy_tokens = {
@@ -571,6 +576,7 @@ static match_table_t policy_tokens = {
 	{Opt_appraise_type, "appraise_type=%s"},
 	{Opt_permit_directio, "permit_directio"},
 	{Opt_pcr, "pcr=%s"},
+	{Opt_digest_list, "digest_list"},
 	{Opt_err, NULL}
 };
 
@@ -889,6 +895,9 @@ static int ima_parse_rule(char *rule, struct ima_rule_entry *entry)
 				entry->flags |= IMA_PCR;
 
 			break;
+		case Opt_digest_list:
+			entry->flags |= IMA_SEARCH_DIGEST_LIST;
+			break;
 		case Opt_err:
 			ima_log_string(ab, "UNKNOWN", p);
 			result = -EINVAL;
@@ -1158,6 +1167,8 @@ int ima_policy_show(struct seq_file *m, void *v)
 		seq_puts(m, "appraise_type=imasig ");
 	if (entry->flags & IMA_PERMIT_DIRECTIO)
 		seq_puts(m, "permit_directio ");
+	if (entry->flags & IMA_SEARCH_DIGEST_LIST)
+		seq_puts(m, "digest_list ");
 	rcu_read_unlock();
 	seq_puts(m, "\n");
 	return 0;

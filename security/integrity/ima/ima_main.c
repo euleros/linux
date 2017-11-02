@@ -184,6 +184,8 @@ static int process_measurement(struct file *file, char *buf, loff_t size,
 	int disable_mask = (func == DIGEST_LIST_CHECK) ?
 			   IMA_DO_MASK & ~IMA_APPRAISE_SUBMASK :
 			   IMA_DO_MASK & ~(IMA_APPRAISE | IMA_APPRAISE_SUBMASK);
+	int disable_mask_policy = (ima_policy_flag & IMA_SEARCH_DIGEST_LIST) ?
+				  IMA_DO_MASK & ~IMA_APPRAISE_SUBMASK : 0;
 
 	if ((func == DIGEST_LIST_METADATA_CHECK || func == DIGEST_LIST_CHECK) &&
 	    !ima_policy_flag)
@@ -196,7 +198,7 @@ static int process_measurement(struct file *file, char *buf, loff_t size,
 	 * bitmask based on the appraise/audit/measurement policy.
 	 * Included is the appraise submask.
 	 */
-	action = ima_get_action(inode, mask, func, &pcr);
+	action = ima_get_action(inode, mask, func, &pcr, &disable_mask_policy);
 	violation_check = ((func == FILE_CHECK || func == MMAP_CHECK) &&
 			   (ima_policy_flag & IMA_MEASURE));
 	if (func == DIGEST_LIST_METADATA_CHECK || func == DIGEST_LIST_CHECK)
@@ -260,6 +262,7 @@ static int process_measurement(struct file *file, char *buf, loff_t size,
 		goto out_digsig;
 
 	digest_lookup = action & ~ima_disable_digest_lookup;
+	digest_lookup &= ~disable_mask_policy;
 	if (digest_lookup) {
 		found_digest = ima_lookup_loaded_digest(iint->ima_hash->digest);
 		if (found_digest) {
