@@ -201,17 +201,27 @@ int ima_appraise_measurement(enum ima_hooks func,
 			     struct integrity_iint_cache *iint,
 			     struct file *file, const unsigned char *filename,
 			     struct evm_ima_xattr_data *xattr_value,
-			     int xattr_len, int opened)
+			     int xattr_len, int opened,
+			     struct ima_digest *found_digest)
 {
 	static const char op[] = "appraise_data";
 	char *cause = "unknown";
 	struct dentry *dentry = file_dentry(file);
 	struct inode *inode = d_backing_inode(dentry);
 	enum integrity_status status = INTEGRITY_UNKNOWN;
-	int rc = xattr_len, hash_start = 0;
+	struct evm_ima_xattr_data digest_list_value;
+	char *list_metadata = XATTR_NAME_IMA;
+	int rc = xattr_len, hash_start = 0, cache_flags_disabled = 0;
 
 	if (!(inode->i_opflags & IOP_XATTR))
-		return INTEGRITY_UNKNOWN;
+		return found_digest ? INTEGRITY_PASS : INTEGRITY_UNKNOWN;
+
+	if (found_digest && (!rc || rc == -ENODATA)) {
+		digest_list_value.type = found_digest->is_mutable ?
+			IMA_DIGEST_LIST_MUTABLE : IMA_DIGEST_LIST_IMMUTABLE;
+		xattr_value = &digest_list_value;
+		rc = sizeof(*xattr_value);
+	}
 
 	if (rc <= 0) {
 		if (rc && rc != -ENODATA)
@@ -228,6 +238,9 @@ int ima_appraise_measurement(enum ima_hooks func,
 		goto out;
 	}
 
+	if (xattr_value == &digest_list_value)
+		goto no_evm_check;
+
 	status = evm_verifyxattr(dentry, XATTR_NAME_IMA, xattr_value, rc, iint);
 	if ((status != INTEGRITY_PASS) && (status != INTEGRITY_UNKNOWN)) {
 		if ((status == INTEGRITY_NOLABEL)
@@ -237,13 +250,17 @@ int ima_appraise_measurement(enum ima_hooks func,
 			cause = "invalid-HMAC";
 		goto out;
 	}
+
+no_evm_check:
 	switch (xattr_value->type) {
 	case IMA_XATTR_DIGEST_NG:
 		/* first byte contains algorithm id */
 		hash_start = 1;
 		/* fall through */
 	case IMA_XATTR_DIGEST:
-		if (iint->flags & IMA_DIGSIG_REQUIRED) {
+		if (found_digest && !found_digest->is_mutable)
+			iint->flags |= IMA_DIGSIG;
+		else if (iint->flags & IMA_DIGSIG_REQUIRED) {
 			cause = "IMA-signature-required";
 			status = INTEGRITY_FAIL;
 			break;
@@ -280,6 +297,25 @@ int ima_appraise_measurement(enum ima_hooks func,
 			status = INTEGRITY_PASS;
 		}
 		break;
+	case IMA_DIGEST_LIST_MUTABLE:
+		if (iint->flags & IMA_DIGSIG_REQUIRED) {
+			cause = "IMA-signature-required";
+			status = INTEGRITY_FAIL;
+			break;
+		}
+		if (ima_fix_xattr(dentry, iint) == -EROFS)
+			cache_flags_disabled = 1;
+
+		status = INTEGRITY_PASS;
+		break;
+	case IMA_DIGEST_LIST_IMMUTABLE:
+		iint->flags |= IMA_DIGSIG;
+		if (!evm_set_includes_protected_xattrs(&list_metadata, 1))
+			if (ima_fix_xattr(dentry, iint) == -EROFS)
+				cache_flags_disabled = 1;
+
+		status = INTEGRITY_PASS;
+		break;
 	default:
 		status = INTEGRITY_UNKNOWN;
 		cause = "unknown-ima-data";
@@ -302,7 +338,8 @@ out:
 		integrity_audit_msg(AUDIT_INTEGRITY_DATA, inode, filename,
 				    op, cause, rc, 0);
 	} else {
-		ima_cache_flags(iint, func);
+		if (!cache_flags_disabled)
+			ima_cache_flags(iint, func);
 	}
 	ima_set_cache_status(iint, func, status);
 	return status;

@@ -270,7 +270,8 @@ static int process_measurement(struct file *file, char *buf, loff_t size,
 			action &= ~action_done;
 			iint->flags |= (action_done << 1);
 
-			if (!(digest_lookup & IMA_APPRAISE))
+			if (!(digest_lookup & IMA_APPRAISE) ||
+			    opened & FILE_CREATED)
 				found_digest = NULL;
 			if (digest_lookup & IMA_MEASURE)
 				iint->measured_pcrs |= (0x1 << pcr);
@@ -282,7 +283,8 @@ static int process_measurement(struct file *file, char *buf, loff_t size,
 
 	if (rc == 0 && (action & IMA_APPRAISE_SUBMASK))
 		rc = ima_appraise_measurement(func, iint, file, pathname,
-					      xattr_value, xattr_len, opened);
+					      xattr_value, xattr_len, opened,
+					      found_digest);
 	if (action & IMA_MEASURE)
 		ima_store_measurement(iint, file, pathname,
 				      xattr_value, xattr_len, pcr);
