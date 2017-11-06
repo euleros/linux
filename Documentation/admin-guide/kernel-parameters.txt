@@ -1172,6 +1172,10 @@
 			Permit 'security.evm' to be updated regardless of
 			current integrity status.
 
+	evm_xattrs=	[EVM]
+			Format: { "security.ima" }
+			Protect only security.ima extended attribute.
+
 	failslab=
 	fail_page_alloc=
 	fail_make_request=[KNL]

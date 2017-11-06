@@ -66,6 +66,18 @@ static int __init evm_set_fixmode(char *str)
 }
 __setup("evm=", evm_set_fixmode);
 
+static int __init evm_select_xattrs(char *str)
+{
+#ifdef CONFIG_IMA_APPRAISE
+	if (strcmp(str, XATTR_NAME_IMA) == 0) {
+		evm_config_xattrnames[0] = XATTR_NAME_IMA;
+		evm_config_xattrnames[1] = NULL;
+	}
+#endif
+	return 0;
+}
+__setup("evm_xattrs=", evm_select_xattrs);
+
 static void __init evm_init_config(void)
 {
 #ifdef CONFIG_EVM_ATTR_FSUUID
@@ -228,6 +240,30 @@ static int evm_protected_xattr(const char *req_xattr_name)
 			found = 1;
 			break;
 		}
+	}
+	return found;
+}
+
+/**
+ * evm_set_includes_protected_xattrs - check if set includes protected xattrs
+ * @set: array of extended attribute names to check
+ * @count: size of array
+ *
+ * Check if the provided set includes all EVM protected extended attributes.
+ *
+ * Return: 1 if set includes all protected xattrs, 0 otherwise.
+ */
+int evm_set_includes_protected_xattrs(char **set, int count)
+{
+	char **xattr;
+	int i, found = 1;
+
+	for (xattr = evm_config_xattrnames; *xattr != NULL; xattr++) {
+		for (i = 0; i < count; i++)
+			if (strcmp(set[i], *xattr) == 0)
+				break;
+		if (i == count)
+			return 0;
 	}
 	return found;
 }

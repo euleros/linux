@@ -15,6 +15,7 @@
 struct integrity_iint_cache;
 
 #ifdef CONFIG_EVM
+extern int evm_set_includes_protected_xattrs(char **set, int count);
 extern int evm_set_key(void *key, size_t keylen);
 extern enum integrity_status evm_verifyxattr(struct dentry *dentry,
 					     const char *xattr_name,
@@ -44,6 +45,11 @@ static inline int posix_xattr_acl(const char *xattrname)
 }
 #endif
 #else
+
+static inline int evm_set_includes_protected_xattrs(char **set, int count)
+{
+	return 1;
+}
 
 static inline int evm_set_key(void *key, size_t keylen)
 {
