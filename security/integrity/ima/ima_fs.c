@@ -28,6 +28,13 @@
 
 static DEFINE_MUTEX(ima_write_mutex);
 
+static struct dentry *ima_dir;
+static struct dentry *binary_runtime_measurements;
+static struct dentry *ascii_runtime_measurements;
+static struct dentry *runtime_measurements_count;
+static struct dentry *violations;
+static struct dentry *ima_policy;
+
 bool ima_canonical_fmt;
 static int __init default_canonical_fmt_setup(char *str)
 {
@@ -309,11 +316,12 @@ static ssize_t ima_read_policy(char *path)
 		return pathlen;
 }
 
-static ssize_t ima_write_policy(struct file *file, const char __user *buf,
-				size_t datalen, loff_t *ppos)
+static ssize_t ima_write_data(struct file *file, const char __user *buf,
+			      size_t datalen, loff_t *ppos)
 {
 	char *data;
 	ssize_t result;
+	struct dentry *dentry = file_dentry(file);
 
 	if (datalen >= PAGE_SIZE)
 		datalen = PAGE_SIZE - 1;
@@ -335,32 +343,31 @@ static ssize_t ima_write_policy(struct file *file, const char __user *buf,
 
 	if (data[0] == '/') {
 		result = ima_read_policy(data);
-	} else if (ima_appraise & IMA_APPRAISE_POLICY) {
-		pr_err("IMA: signed policy file (specified as an absolute pathname) required\n");
-		integrity_audit_msg(AUDIT_INTEGRITY_STATUS, NULL, NULL,
-				    "policy_update", "signed policy required",
-				    1, 0);
-		if (ima_appraise & IMA_APPRAISE_ENFORCE)
-			result = -EACCES;
+	} else if (dentry == ima_policy) {
+		if (ima_appraise & IMA_APPRAISE_POLICY) {
+			pr_err("IMA: signed policy file (specified "
+			       "as an absolute pathname) required\n");
+			integrity_audit_msg(AUDIT_INTEGRITY_STATUS, NULL, NULL,
+				"policy_update", "signed policy required",
+				1, 0);
+			if (ima_appraise & IMA_APPRAISE_ENFORCE)
+				result = -EACCES;
+		} else {
+			result = ima_parse_add_rule(data);
+		}
 	} else {
-		result = ima_parse_add_rule(data);
+		pr_err("Unknown data type\n");
+		result = -EINVAL;
 	}
 	mutex_unlock(&ima_write_mutex);
 out_free:
 	kfree(data);
 out:
-	if (result < 0)
+	if (dentry == ima_policy && result < 0)
 		valid_policy = 0;
 
 	return result;
 }
-
-static struct dentry *ima_dir;
-static struct dentry *binary_runtime_measurements;
-static struct dentry *ascii_runtime_measurements;
-static struct dentry *runtime_measurements_count;
-static struct dentry *violations;
-static struct dentry *ima_policy;
 
 enum ima_fs_flags {
 	IMA_FS_BUSY,
@@ -440,7 +447,7 @@ static int ima_release_policy(struct inode *inode, struct file *file)
 
 static const struct file_operations ima_measure_policy_ops = {
 	.open = ima_open_policy,
-	.write = ima_write_policy,
+	.write = ima_write_data,
 	.read = seq_read,
 	.release = ima_release_policy,
 	.llseek = generic_file_llseek,
