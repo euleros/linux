@@ -19,6 +19,7 @@
 #include <keys/system_keyring.h>
 #include <crypto/pkcs7.h>
 #include <linux/pgp_sig.h>
+#include <linux/fs.h>
 
 static struct key *builtin_trusted_keys;
 #ifdef CONFIG_SECONDARY_TRUSTED_KEYRING
@@ -187,6 +188,31 @@ dodgy_cert:
 	return 0;
 }
 late_initcall(load_system_certificate_list);
+
+#ifdef CONFIG_PGP_PRELOAD_PUBLIC_KEYS
+extern __initconst const u8 pgp_public_keys[];
+extern __initconst const u8 pgp_public_keys_end[];
+asm(".section .init.data,\"aw\"\n"
+	"pgp_public_keys:\n"
+	".incbin \"pubring.gpg\"\n"
+	"pgp_public_keys_end:");
+
+/*
+ * Load a list of PGP keys.
+ */
+static __init int load_pgp_public_keyring(void)
+{
+	pr_notice("Load PGP public keys\n");
+
+	if (preload_pgp_keys(pgp_public_keys,
+			     pgp_public_keys_end - pgp_public_keys,
+			     builtin_trusted_keys) < 0)
+		pr_err("Can't load PGP public keys\n");
+
+	return 0;
+}
+late_initcall(load_pgp_public_keyring);
+#endif /* CONFIG_PGP_PRELOAD_PUBLIC_KEYS */
 
 #ifdef CONFIG_SYSTEM_DATA_VERIFICATION
 
