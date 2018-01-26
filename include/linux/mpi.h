@@ -72,6 +72,8 @@ void mpi_swap(MPI a, MPI b);
 /*-- mpicoder.c --*/
 MPI do_encode_md(const void *sha_buffer, unsigned nbits);
 MPI mpi_read_raw_data(const void *xbuffer, size_t nbytes);
+int mpi_key_length(const void *xbuffer, unsigned int ret_nread,
+		   unsigned int *nbits_arg, unsigned int *nbytes_arg);
 MPI mpi_read_from_buffer(const void *buffer, unsigned *ret_nread);
 MPI mpi_read_raw_from_sgl(struct scatterlist *sgl, unsigned int len);
 int mpi_fromstr(MPI val, const char *str);
