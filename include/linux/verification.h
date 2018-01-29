@@ -39,6 +39,11 @@ extern int verify_pkcs7_signature(const void *data, size_t len,
 						      size_t asn1hdrlen),
 				  void *ctx);
 
+extern int verify_pgp_signature(const void *data, size_t len,
+				const void *digest, size_t digest_size,
+				const void *raw_pgp, size_t pgp_len,
+				struct key *trusted_keys);
+
 #ifdef CONFIG_SIGNED_PE_FILE_VERIFICATION
 extern int verify_pefile_signature(const void *pebuf, unsigned pelen,
 				   struct key *trusted_keys,

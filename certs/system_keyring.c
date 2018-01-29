@@ -18,6 +18,7 @@
 #include <keys/asymmetric-type.h>
 #include <keys/system_keyring.h>
 #include <crypto/pkcs7.h>
+#include <linux/pgp_sig.h>
 
 static struct key *builtin_trusted_keys;
 #ifdef CONFIG_SECONDARY_TRUSTED_KEYRING
@@ -263,5 +264,48 @@ error:
 	return ret;
 }
 EXPORT_SYMBOL_GPL(verify_pkcs7_signature);
+
+/**
+ * verify_pgp_signature - Verify a PGP-based signature on system data.
+ * @data: The data to be verified (NULL if expecting internal data).
+ * @len: Size of @data.
+ * @digest: Digest for signature verification.
+ * @digest_size: Size of @digest.
+ * @raw_pgp: The PGP message that is the signature.
+ * @pgp_len: Size of @raw_pgp.
+ * @trusted_keys: Trusted keys to use (NULL for builtin trusted keys only,
+ *					(void *)1UL for all trusted keys).
+ */
+int verify_pgp_signature(const void *data, size_t len,
+			 const void *digest, size_t digest_size,
+			 const void *raw_pgp, size_t pgp_len,
+			 struct key *trusted_keys)
+{
+	int ret = -ENOTSUPP;
+
+#ifdef CONFIG_PGP_KEY_PARSER
+	bool trusted;
+
+	if (!trusted_keys) {
+		trusted_keys = builtin_trusted_keys;
+	} else if (trusted_keys == (void *)1UL) {
+#ifdef CONFIG_SECONDARY_TRUSTED_KEYRING
+		trusted_keys = secondary_trusted_keys;
+#else
+		trusted_keys = builtin_trusted_keys;
+#endif
+	}
+
+	ret = pgp_verify_sig(trusted_keys, data, len, digest, digest_size,
+			     raw_pgp, pgp_len, &trusted);
+	if (ret == 0 && !trusted_keys && !trusted) {
+		pr_err("PGP message doesn't chain back to a trusted key\n");
+		ret = -EKEYREJECTED;
+	}
+#endif /* CONFIG_PGP_KEY_PARSER */
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(verify_pgp_signature);
 
 #endif /* CONFIG_SYSTEM_DATA_VERIFICATION */
