@@ -17,5 +17,7 @@ struct key;
 int pgp_verify_sig(struct key *keyring, const u8 *raw_data, size_t raw_datalen,
 		   const u8 *digest, size_t digest_size, const u8 *sig_data,
 		   size_t sig_datalen, bool *trusted);
+int __init preload_pgp_keys(const u8 *pgpdata, size_t pgpdatalen,
+			    struct key *keyring);
 
 #endif /* _LINUX_PGP_SIG_H */

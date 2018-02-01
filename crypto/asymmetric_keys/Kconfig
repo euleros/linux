@@ -91,4 +91,13 @@ config PGP_TEST_KEY
 
 	  This is intended for testing the PGP parser.
 
+config PGP_PRELOAD
+	bool "PGP public key preloading facility"
+	select PGP_LIBRARY
+	select PGP_KEY_PARSER
+	help
+	  This option provides a facility for the kernel to preload PGP-wrapped
+	  bundles of keys during boot.  It is used by module signing to load
+	  the module signing keys for example.
+
 endif # ASYMMETRIC_KEY_TYPE
