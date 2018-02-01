@@ -79,4 +79,16 @@ config PGP_KEY_PARSER
 	  for key data and provides the ability to instantiate a crypto key
 	  from a public key packet found inside the blob.
 
+config PGP_TEST_KEY
+	bool "PGP testing key type"
+	depends on PGP_KEY_PARSER
+	help
+	  This option provides a type of key that can be loaded up from a
+	  PGP message - provided the message is signed by a trusted key.  If
+	  it is, the PGP wrapper is discarded and reading the key returns
+	  just the payload.  If it isn't, adding the key will fail with an
+	  error.
+
+	  This is intended for testing the PGP parser.
+
 endif # ASYMMETRIC_KEY_TYPE

@@ -550,3 +550,67 @@ int pgp_parse_sig_params(const u8 **_data, size_t *_datalen,
 	return 0;
 }
 EXPORT_SYMBOL_GPL(pgp_parse_sig_params);
+
+#ifdef CONFIG_PGP_TEST_KEY
+
+/**
+ * pgp_parse_literal_data - Parse basic params from a PGP literal data packet
+ * @data: Content of packet
+ * @datalen: Length of packet remaining
+ * @p: The basic parameters
+ *
+ * Parse the basic parameters from a PGP literal data packet [RFC 4880: 5.9]
+ * that are needed to work out what form the data is in and where it is.
+ *
+ * Returns 0 if successful or a negative error code.
+ */
+int pgp_parse_literal_data(const u8 *data, size_t datalen,
+			   struct pgp_literal_data_parameters *p)
+{
+	unsigned int tmp;
+
+	pr_devel("-->%s(,%zu,,)", __func__, datalen);
+
+	if (datalen < 6)
+		goto too_short;
+	datalen -= 6;
+
+	p->format = *data++;
+	switch (p->format) {
+	case PGP_LIT_FORMAT_BINARY:
+	case PGP_LIT_FORMAT_TEXT:
+	case PGP_LIT_FORMAT_TEXT_UTF8:
+		break;
+	default:
+		pr_debug("Literal data packet with unhandled format %02x\n",
+			 p->format);
+		return -EBADMSG;
+	}
+
+	p->filename_len = *data++;
+	p->filename_offset = 2;
+	if (datalen < p->filename_len)
+		goto too_short;
+	data += p->filename_len;
+	datalen -= p->filename_len;
+
+	tmp  = *data++ << 24;
+	tmp |= *data++ << 16;
+	tmp |= *data++ << 8;
+	tmp |= *data++;
+	p->time = tmp;
+
+	p->content_offset = 6 + p->filename_len;
+	p->content_len = datalen;
+
+	pr_devel("%x,%u,%x,%u\n",
+		 p->format, p->filename_len, p->time, p->content_len);
+	return 0;
+
+too_short:
+	pr_debug("Literal data packet too short\n");
+	return -EBADMSG;
+}
+EXPORT_SYMBOL_GPL(pgp_parse_literal_data);
+
+#endif /* CONFIG_PGP_TEST_KEY */

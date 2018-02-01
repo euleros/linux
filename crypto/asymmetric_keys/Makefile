@@ -78,3 +78,4 @@ obj-$(CONFIG_PGP_KEY_PARSER) += pgp_key_parser.o
 pgp_key_parser-y := \
 	pgp_public_key.o \
 	pgp_signature.o
+pgp_key_parser-$(CONFIG_PGP_TEST_KEY) += pgp_test_key.o

@@ -66,6 +66,21 @@ struct pgp_sig_parameters {
 extern int pgp_parse_sig_params(const u8 **_data, size_t *_datalen,
 				struct pgp_sig_parameters *p);
 
+#ifdef CONFIG_PGP_TEST_KEY
+
+struct pgp_literal_data_parameters {
+	enum pgp_literal_data_format format : 8;
+	u8 filename_len;
+	u8 filename_offset;
+	u8 content_offset;
+	u32 content_len;
+	u32 time;
+};
+
+extern int pgp_parse_literal_data(const u8 *data, size_t datalen,
+				  struct pgp_literal_data_parameters *p);
+
+#endif /* CONFIG_PGP_TEST_KEY */
 
 #endif /* CONFIG_PGP_LIBRARY */
 
