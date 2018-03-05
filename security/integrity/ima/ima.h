@@ -108,6 +108,9 @@ struct ima_queue_entry {
 extern struct list_head ima_measurements;	/* list of all measurements */
 
 #define DIGEST_FLAG_DIGEST_ALGO 0x01
+#define DIGEST_FLAG_IMMUTABLE	0x02
+
+enum digest_data_types {DATA_TYPE_HEADER, DATA_TYPE_DIGEST_LIST};
 
 struct ima_digest {
 	struct hlist_node hnext;
@@ -161,6 +164,14 @@ int ima_restore_measurement_entry(struct ima_template_entry *entry);
 int ima_restore_measurement_list(loff_t bufsize, void *buf);
 struct ima_digest *ima_lookup_loaded_digest(u8 *digest, u16 digest_algo);
 int ima_add_digest_data_entry(u8 *digest, u16 digest_algo, u8 flags, u16 type);
+#ifdef CONFIG_IMA_DIGEST_LIST
+ssize_t ima_parse_digest_list_metadata(loff_t size, void *buf);
+#else
+static inline ssize_t ima_parse_digest_list_metadata(loff_t size, void *buf)
+{
+	return -ENOTSUPP;
+}
+#endif
 int ima_measurements_show(struct seq_file *m, void *v);
 unsigned long ima_get_binary_runtime_size(void);
 int ima_init_template(void);
