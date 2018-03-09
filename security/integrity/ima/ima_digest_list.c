@@ -16,6 +16,7 @@
 
 #include <linux/vmalloc.h>
 #include <linux/module.h>
+#include <linux/parser.h>
 #include <linux/verification.h>
 #include <linux/namei.h>
 #include <linux/xattr.h>
@@ -57,6 +58,26 @@ static int __init digest_list_pcr_setup(char *str)
 	return 1;
 }
 __setup("ima_digest_list_pcr=", digest_list_pcr_setup);
+
+static match_table_t supported_actions = {
+	{IMA_MEASURE, "measure"},
+	{IMA_APPRAISE, "appraise"},
+};
+
+static int ima_digest_list_actions = IMA_MEASURE | IMA_APPRAISE;
+static int __init digest_list_actions_setup(char *str)
+{
+	substring_t args[MAX_OPT_ARGS];
+	int actions = 0;
+	char *p;
+
+	while ((p = strsep(&str, ",")) != NULL)
+		actions |= match_token(p, supported_actions, args);
+
+	ima_digest_list_actions = actions;
+	return 1;
+}
+__setup("ima_digest_list_actions=", digest_list_actions_setup);
 
 /***********************
  * Compact list parser *
@@ -463,6 +484,8 @@ ssize_t ima_parse_digest_list_metadata(loff_t size, void *buf)
 			       path, ret);
 			return ret;
 		}
+	} else {
+		ima_digest_list_actions &= ~IMA_APPRAISE;
 	}
 
 	ret = ima_add_digest_data_entry(digest, digest_algo, flags, data_type);
@@ -493,6 +516,12 @@ void __init ima_load_digest_list_metadata(void)
 	void *datap;
 	loff_t size;
 	int ret;
+
+	if (ima_pcr[ima_digest_list_pcr_idx] == -1)
+		ima_digest_list_actions &= ~IMA_MEASURE;
+
+	if (!(ima_digest_list_actions & ima_policy_flag))
+		return;
 
 	/* allow the kernel to read metadata without appraisal verification */
 	parser_task = current;
@@ -544,6 +573,9 @@ int ima_digest_list_enable_upload(struct dentry *dentry)
 	struct file *parser_file;
 	struct mm_struct *mm;
 
+	if (!(ima_digest_list_actions & ima_policy_flag))
+		return 0;
+
 	mm = get_task_mm(current);
 	if (!mm)
 		return 0;
@@ -579,4 +611,18 @@ void ima_digest_list_disable_upload(void)
 {
 	parser_task = NULL;
 	opened_dentry = NULL;
+}
+
+void ima_digest_list_check_action(struct file *file, int action)
+{
+	int action_mask = (IMA_DO_MASK & ~IMA_APPRAISE_SUBMASK);
+	struct dentry *dentry = file_dentry(file);
+
+	if (current != parser_task || !opened_dentry)
+		return;
+
+	if (dentry == digest_list_metadata || dentry == digest_list_data)
+		return;
+
+	ima_digest_list_actions &= (action & action_mask);
 }

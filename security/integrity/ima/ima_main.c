@@ -191,6 +191,9 @@ static int process_measurement(struct file *file, const struct cred *cred,
 	int xattr_len = 0;
 	bool violation_check;
 	enum hash_algo hash_algo;
+	int policy_action = S_ISREG(inode->i_mode) ? ima_policy_flag : 0;
+
+	ima_digest_list_check_action(file, policy_action);
 
 	if (!ima_policy_flag || !S_ISREG(inode->i_mode))
 		return 0;
@@ -202,6 +205,8 @@ static int process_measurement(struct file *file, const struct cred *cred,
 	action = ima_get_action(inode, cred, secid, mask, func, &pcr);
 	violation_check = ((func == FILE_CHECK || func == MMAP_CHECK) &&
 			   (ima_policy_flag & IMA_MEASURE));
+	ima_digest_list_check_action(file, action);
+
 	if (!action && !violation_check)
 		return 0;
 

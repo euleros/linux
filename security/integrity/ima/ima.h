@@ -176,6 +176,7 @@ enum hash_algo ima_digest_list_get_algo(struct file *file,
 ssize_t ima_parse_digest_list_metadata(loff_t size, void *buf);
 int ima_digest_list_enable_upload(struct dentry *dentry);
 void ima_digest_list_disable_upload(void);
+void ima_digest_list_check_action(struct file *file, int action);
 #else
 static inline int ima_parse_compact_list(loff_t size, void *buf)
 {
@@ -195,6 +196,9 @@ static inline int ima_digest_list_enable_upload(struct dentry *dentry)
 	return 0;
 }
 static inline void ima_digest_list_disable_upload(void)
+{
+}
+static inline void ima_digest_list_check_action(struct file *file, int action)
 {
 }
 #endif

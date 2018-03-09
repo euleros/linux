@@ -1519,6 +1519,12 @@
 			Use the canonical format for the binary runtime
 			measurements, instead of host native format.
 
+	ima_digest_list_actions=
+			[IMA]
+			Specify for which actions (measure, appraise, audit,
+			hash) digest lookup will be done, if supported.
+			Format: { "<action>,..." }
+
 	ima_digest_list_pcr=
 			[IMA]
 			Specify which PCR is extended with digests not found
