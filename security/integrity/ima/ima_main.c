@@ -251,7 +251,8 @@ static int process_measurement(struct file *file, const struct cred *cred,
 	if (test_and_clear_bit(IMA_CHANGE_XATTR, &iint->atomic_flags) ||
 	    ((inode->i_sb->s_iflags & SB_I_IMA_UNVERIFIABLE_SIGNATURE) &&
 	     !(inode->i_sb->s_iflags & SB_I_UNTRUSTED_MOUNTER) &&
-	     !(action & IMA_FAIL_UNVERIFIABLE_SIGS))) {
+	     !(action & IMA_FAIL_UNVERIFIABLE_SIGS)) ||
+	    ima_digest_list_clear_done_mask()) {
 		iint->flags &= ~IMA_DONE_MASK;
 		iint->measured_pcrs = 0;
 	}
@@ -309,13 +310,15 @@ static int process_measurement(struct file *file, const struct cred *cred,
 	if (action & IMA_MEASURE)
 		ima_store_measurement(iint, file, pathname,
 				      xattr_value, xattr_len, pcr,
-				      found_digest);
+				      ima_digest_allow(found_digest,
+						       IMA_MEASURE));
 
 	if (rc == 0 && (action & IMA_APPRAISE_SUBMASK)) {
 		inode_lock(inode);
 		rc = ima_appraise_measurement(func, iint, file, pathname,
 					      xattr_value, xattr_len, opened,
-					      found_digest);
+					      ima_digest_allow(found_digest,
+							       IMA_APPRAISE));
 		inode_unlock(inode);
 	}
 	if (action & IMA_AUDIT)

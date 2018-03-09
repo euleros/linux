@@ -177,6 +177,8 @@ ssize_t ima_parse_digest_list_metadata(loff_t size, void *buf);
 int ima_digest_list_enable_upload(struct dentry *dentry);
 void ima_digest_list_disable_upload(void);
 void ima_digest_list_check_action(struct file *file, int action);
+int ima_digest_list_clear_done_mask(void);
+struct ima_digest *ima_digest_allow(struct ima_digest *digest, int action);
 #else
 static inline int ima_parse_compact_list(loff_t size, void *buf)
 {
@@ -200,6 +202,15 @@ static inline void ima_digest_list_disable_upload(void)
 }
 static inline void ima_digest_list_check_action(struct file *file, int action)
 {
+}
+static inline int ima_digest_list_clear_done_mask(void)
+{
+	return 0;
+}
+static inline struct ima_digest *ima_digest_allow(struct ima_digest *digest,
+						  int action)
+{
+	return NULL;
 }
 #endif
 int ima_measurements_show(struct seq_file *m, void *v);
