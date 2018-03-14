@@ -632,6 +632,8 @@ int ima_digest_list_clear_done_mask(void)
 	return (current == parser_task);
 }
 
+struct ima_digest digest_metadata = {.flags = DIGEST_FLAG_METADATA};
+
 struct ima_digest *ima_digest_allow(struct ima_digest *digest, int action)
 {
 	if (!(ima_digest_list_actions & action))
@@ -641,6 +643,10 @@ struct ima_digest *ima_digest_allow(struct ima_digest *digest, int action)
 		if (!digest || digest->type != DATA_TYPE_DIGEST_LIST)
 			ima_digest_list_disable_upload();
 	}
+
+	if (current == parser_task && opened_dentry == digest_list_metadata &&
+	    action == IMA_APPRAISE)
+		return &digest_metadata;
 
 	return digest;
 }

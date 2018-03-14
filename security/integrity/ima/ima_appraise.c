@@ -236,6 +236,8 @@ int ima_appraise_measurement(enum ima_hooks func,
 		digest_list_value.type = IMA_DIGEST_LIST_MUTABLE;
 		if (found_digest_immutable)
 			digest_list_value.type = IMA_DIGEST_LIST_IMMUTABLE;
+		else if (found_digest->flags == DIGEST_FLAG_METADATA)
+			digest_list_value.type = IMA_DIGEST_LIST_METADATA;
 
 		xattr_value = &digest_list_value;
 		rc = sizeof(*xattr_value);
@@ -342,6 +344,10 @@ no_evm_check:
 			if (ima_fix_xattr(dentry, iint) == -EROFS)
 				cache_flags_disabled = 1;
 
+		status = INTEGRITY_PASS;
+		break;
+	case IMA_DIGEST_LIST_METADATA:
+		cache_flags_disabled = 1;
 		status = INTEGRITY_PASS;
 		break;
 	default:

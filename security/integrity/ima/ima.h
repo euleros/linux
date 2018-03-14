@@ -113,6 +113,7 @@ extern struct list_head ima_measurements;	/* list of all measurements */
 
 #define DIGEST_FLAG_DIGEST_ALGO 0x01
 #define DIGEST_FLAG_IMMUTABLE	0x02
+#define DIGEST_FLAG_METADATA	0x04
 
 enum digest_data_types {DATA_TYPE_HEADER, DATA_TYPE_DIGEST_LIST, DATA_TYPE_KEY,
 			DATA_TYPE_PARSER, DATA_TYPE_REG_FILE};
