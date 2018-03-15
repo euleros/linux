@@ -165,6 +165,14 @@ static struct ima_rule_entry default_appraise_rules[] __ro_after_init = {
 #endif
 };
 
+static struct ima_rule_entry initrd_measure_rule __ro_after_init = {
+	.action = MEASURE, .fsname = "rootfs", .flags = IMA_FSNAME
+};
+
+static struct ima_rule_entry initrd_appraise_rule __ro_after_init = {
+	.action = APPRAISE, .fsname = "rootfs", .flags = IMA_FSNAME
+};
+
 static struct ima_rule_entry build_appraise_rules[] __ro_after_init = {
 #ifdef CONFIG_IMA_APPRAISE_REQUIRE_MODULE_SIGS
 	{.action = APPRAISE, .func = MODULE_CHECK,
@@ -218,6 +226,8 @@ __setup("ima_tcb", default_measure_policy_setup);
 static bool ima_use_appraise_tcb __initdata;
 static bool ima_use_secure_boot __initdata;
 static bool ima_fail_unverifiable_sigs __ro_after_init;
+static bool ima_measure_initrd __initdata;
+static bool ima_appraise_initrd __initdata;
 static int __init policy_setup(char *str)
 {
 	char *p;
@@ -233,6 +243,10 @@ static int __init policy_setup(char *str)
 			ima_use_secure_boot = true;
 		else if (strcmp(p, "fail_securely") == 0)
 			ima_fail_unverifiable_sigs = true;
+		else if (strcmp(p, "initrd") == 0)
+			ima_measure_initrd = true;
+		else if (strcmp(p, "appraise_initrd") == 0)
+			ima_appraise_initrd = true;
 	}
 
 	return 1;
@@ -640,9 +654,13 @@ void __init ima_init_policy(void)
 	int build_appraise_entries, arch_entries;
 
 	/* if !ima_policy, we load NO default rules */
-	if (ima_policy)
+	if (ima_policy) {
+		if (ima_measure_initrd)
+			add_rules(&initrd_measure_rule, 1, IMA_DEFAULT_POLICY);
+
 		add_rules(dont_measure_rules, ARRAY_SIZE(dont_measure_rules),
 			  IMA_DEFAULT_POLICY);
+	}
 
 	switch (ima_policy) {
 	case ORIGINAL_TCB:
@@ -695,10 +713,14 @@ void __init ima_init_policy(void)
 				  IMA_DEFAULT_POLICY | IMA_CUSTOM_POLICY);
 	}
 
-	if (ima_use_appraise_tcb)
+	if (ima_use_appraise_tcb) {
+		if (ima_appraise_initrd)
+			add_rules(&initrd_appraise_rule, 1, IMA_DEFAULT_POLICY);
+
 		add_rules(default_appraise_rules,
 			  ARRAY_SIZE(default_appraise_rules),
 			  IMA_DEFAULT_POLICY);
+	}
 
 	ima_rules = &ima_default_rules;
 	ima_update_policy_flag();
