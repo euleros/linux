@@ -903,7 +903,9 @@ static int ima_parse_rule(char *rule, struct ima_rule_entry *entry)
 			ima_log_string(ab, "pcr", args[0].from);
 
 			result = kstrtoint(args[0].from, 10, &entry->pcr);
-			if (result || INVALID_PCR(entry->pcr))
+			if (result || INVALID_PCR(entry->pcr) ||
+			    (ima_digest_list_pcr_idx >= 0 &&
+			    entry->pcr == ima_pcr[ima_digest_list_pcr_idx]))
 				result = -EINVAL;
 			else
 				entry->flags |= IMA_PCR;

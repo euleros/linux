@@ -31,6 +31,29 @@
 
 static int ima_parser_metadata_load;
 
+static int __init digest_list_pcr_setup(char *str)
+{
+	int pcr, ret;
+
+	ret = kstrtouint(str, 10, &pcr);
+	if (ret) {
+		pr_err("Invalid PCR number %s\n", str);
+		return 1;
+	}
+
+	if (pcr == CONFIG_IMA_MEASURE_PCR_IDX) {
+		pr_err("Default PCR cannot be used for digest lists\n");
+		return 1;
+	}
+
+	if (*str != '+')
+		ima_digest_list_pcr_idx = 0;
+
+	ima_pcr[ima_digest_list_pcr_idx] = pcr;
+	return 1;
+}
+__setup("ima_digest_list_pcr=", digest_list_pcr_setup);
+
 /***********************
  * Compact list parser *
  ***********************/

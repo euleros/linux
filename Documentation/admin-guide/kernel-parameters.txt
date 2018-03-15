@@ -1515,6 +1515,14 @@
 			Use the canonical format for the binary runtime
 			measurements, instead of host native format.
 
+	ima_digest_list_pcr=
+			[IMA]
+			Specify which PCR is extended with digests not found
+			in loaded digest lists. Measurement entries for known
+			files are not created unless the '+' is added before
+			the chosen PCR.
+			Format: { [+]<unsigned int> }
+
 	ima_hash=	[IMA]
 			Format: { md5 | sha1 | rmd160 | sha256 | sha384
 				   | sha512 | ... }

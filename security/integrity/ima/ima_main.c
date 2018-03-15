@@ -40,6 +40,9 @@ int ima_appraise = IMA_APPRAISE_ENFORCE;
 int ima_appraise;
 #endif
 
+int ima_pcr[2] = {CONFIG_IMA_MEASURE_PCR_IDX, -1};
+int ima_digest_list_pcr_idx = 1;
+
 int ima_hash_algo = HASH_ALGO_SHA1;
 static int hash_setup_done;
 
@@ -182,7 +185,8 @@ static int process_measurement(struct file *file, const struct cred *cred,
 	char filename[NAME_MAX];
 	const char *pathname = NULL;
 	int rc = 0, action, must_appraise = 0;
-	int pcr = CONFIG_IMA_MEASURE_PCR_IDX;
+	int pcr = ima_pcr[0];
+	struct ima_digest *found_digest = NULL;
 	struct evm_ima_xattr_data *xattr_value = NULL;
 	int xattr_len = 0;
 	bool violation_check;
@@ -295,9 +299,13 @@ static int process_measurement(struct file *file, const struct cred *cred,
 	if (!pathbuf)	/* ima_rdwr_violation possibly pre-fetched */
 		pathname = ima_d_path(&file->f_path, &pathbuf, filename);
 
+	found_digest = ima_lookup_loaded_digest(iint->ima_hash->digest,
+						hash_algo);
 	if (action & IMA_MEASURE)
 		ima_store_measurement(iint, file, pathname,
-				      xattr_value, xattr_len, pcr);
+				      xattr_value, xattr_len, pcr,
+				      found_digest);
+
 	if (rc == 0 && (action & IMA_APPRAISE_SUBMASK)) {
 		inode_lock(inode);
 		rc = ima_appraise_measurement(func, iint, file, pathname,

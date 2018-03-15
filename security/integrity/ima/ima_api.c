@@ -147,7 +147,7 @@ void ima_add_violation(struct file *file, const unsigned char *filename,
 		goto err_out;
 	}
 	result = ima_store_template(entry, violation, inode,
-				    filename, CONFIG_IMA_MEASURE_PCR_IDX);
+				    filename, ima_pcr[0]);
 	if (result < 0)
 		ima_free_template_entry(entry);
 err_out:
@@ -277,19 +277,24 @@ out:
 void ima_store_measurement(struct integrity_iint_cache *iint,
 			   struct file *file, const unsigned char *filename,
 			   struct evm_ima_xattr_data *xattr_value,
-			   int xattr_len, int pcr)
+			   int xattr_len, int pcr, struct ima_digest *digest)
 {
 	static const char op[] = "add_template_measure";
 	static const char audit_cause[] = "ENOMEM";
 	int result = -ENOMEM;
 	struct inode *inode = file_inode(file);
-	struct ima_template_entry *entry;
+	struct ima_template_entry *entry = NULL, *entry_digest_list = NULL;
 	struct ima_event_data event_data = {iint, file, filename, xattr_value,
 					    xattr_len, NULL};
 	int violation = 0;
 
 	if (iint->measured_pcrs & (0x1 << pcr))
 		return;
+
+	if (digest && ima_digest_list_pcr_idx == 0) {
+		result = -EEXIST;
+		goto out;
+	}
 
 	result = ima_alloc_init_template(&event_data, &entry);
 	if (result < 0) {
@@ -299,12 +304,27 @@ void ima_store_measurement(struct integrity_iint_cache *iint,
 	}
 
 	result = ima_store_template(entry, violation, inode, filename, pcr);
+out:
 	if ((!result || result == -EEXIST) && !(file->f_flags & O_DIRECT)) {
 		iint->flags |= IMA_MEASURED;
 		iint->measured_pcrs |= (0x1 << pcr);
 	}
-	if (result < 0)
-		ima_free_template_entry(entry);
+	if (!result && !digest && ima_digest_list_pcr_idx == 1 &&
+	    ima_pcr[ima_digest_list_pcr_idx] >= 0) {
+		entry_digest_list = kmemdup(entry,
+			sizeof(*entry) + entry->template_data_len, GFP_KERNEL);
+		if (entry_digest_list)
+			result = ima_store_template(entry_digest_list,
+					violation, inode, filename,
+					ima_pcr[ima_digest_list_pcr_idx]);
+	}
+
+	if (result < 0) {
+		if (entry)
+			ima_free_template_entry(entry);
+
+		kfree(entry_digest_list);
+	}
 }
 
 void ima_audit_measurement(struct integrity_iint_cache *iint,

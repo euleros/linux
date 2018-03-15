@@ -47,7 +47,7 @@ static int __init ima_add_boot_aggregate(void)
 {
 	static const char op[] = "add_boot_aggregate";
 	const char *audit_cause = "ENOMEM";
-	struct ima_template_entry *entry;
+	struct ima_template_entry *entry, *entry_digest_list = NULL;
 	struct integrity_iint_cache tmp_iint, *iint = &tmp_iint;
 	struct ima_event_data event_data = {iint, NULL, boot_aggregate_name,
 					    NULL, 0, NULL};
@@ -79,10 +79,20 @@ static int __init ima_add_boot_aggregate(void)
 	}
 
 	result = ima_store_template(entry, violation, NULL,
-				    boot_aggregate_name,
-				    CONFIG_IMA_MEASURE_PCR_IDX);
+				    boot_aggregate_name, ima_pcr[0]);
+	if (!result && ima_pcr[1] >= 0) {
+		entry_digest_list = kmemdup(entry,
+			sizeof(*entry) + entry->template_data_len, GFP_KERNEL);
+		if (entry_digest_list)
+			result = ima_store_template(entry_digest_list,
+						    violation, NULL,
+						    boot_aggregate_name,
+						    ima_pcr[1]);
+	}
+
 	if (result < 0) {
 		ima_free_template_entry(entry);
+		kfree(entry_digest_list);
 		audit_cause = "store_entry";
 		goto err_out;
 	}
