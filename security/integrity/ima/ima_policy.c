@@ -188,7 +188,9 @@ static int __init default_measure_policy_setup(char *str)
 }
 __setup("ima_tcb", default_measure_policy_setup);
 
+static bool ima_use_tcb_initrd __initdata;
 static bool ima_use_appraise_tcb __initdata;
+static bool ima_use_appraise_tcb_initrd __initdata;
 static bool ima_use_secure_boot __initdata;
 static bool ima_fail_unverifiable_sigs __ro_after_init;
 static int __init policy_setup(char *str)
@@ -206,6 +208,13 @@ static int __init policy_setup(char *str)
 			ima_use_secure_boot = true;
 		else if (strcmp(p, "fail_securely") == 0)
 			ima_fail_unverifiable_sigs = true;
+		else if (strcmp(p, "tcb_initrd") == 0 && !ima_policy) {
+			ima_policy = DEFAULT_TCB;
+			ima_use_tcb_initrd = true;
+		} else if (strcmp(p, "appraise_tcb_initrd") == 0) {
+			ima_use_appraise_tcb = true;
+			ima_use_appraise_tcb_initrd = true;
+		}
 	}
 
 	return 1;
@@ -452,8 +461,13 @@ void __init ima_init_policy(void)
 	secure_boot_entries = ima_use_secure_boot ?
 			ARRAY_SIZE(secure_boot_rules) : 0;
 
-	for (i = 0; i < measure_entries; i++)
+	for (i = 0; i < measure_entries; i++) {
+		if (ima_use_tcb_initrd &&
+		    dont_measure_rules[i].fsmagic == TMPFS_MAGIC)
+			continue;
+
 		list_add_tail(&dont_measure_rules[i].list, &ima_default_rules);
+	}
 
 	switch (ima_policy) {
 	case ORIGINAL_TCB:
@@ -478,6 +492,12 @@ void __init ima_init_policy(void)
 			      &ima_default_rules);
 
 	for (i = 0; i < appraise_entries; i++) {
+		if (ima_use_appraise_tcb_initrd)
+			if (default_appraise_rules[i].action == DONT_APPRAISE &&
+			    (default_appraise_rules[i].fsmagic == TMPFS_MAGIC ||
+			    default_appraise_rules[i].fsmagic == RAMFS_MAGIC))
+				continue;
+
 		list_add_tail(&default_appraise_rules[i].list,
 			      &ima_default_rules);
 		if (default_appraise_rules[i].func == POLICY_CHECK)
