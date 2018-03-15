@@ -20,6 +20,8 @@
 #include <linux/namei.h>
 #include <linux/xattr.h>
 #include <linux/magic.h>
+#include <linux/file.h>
+#include <linux/sched/mm.h>
 
 #include "ima.h"
 #include "ima_template_lib.h"
@@ -30,6 +32,8 @@
 #define REQ_PARSER_VERSION 1
 
 static int ima_parser_metadata_load;
+static struct task_struct *parser_task;
+static struct dentry *opened_dentry;
 
 static int __init digest_list_pcr_setup(char *str)
 {
@@ -74,6 +78,9 @@ int ima_parse_compact_list(loff_t size, void *buf)
 	u8 flags = 0;
 	u16 type = DATA_TYPE_REG_FILE;
 	int ret, i, digest_len;
+
+	if (current != parser_task)
+		return -EPERM;
 
 	while (bufp < bufendp) {
 		if (bufp + sizeof(*hdr) > bufendp) {
@@ -359,6 +366,9 @@ ssize_t ima_parse_digest_list_metadata(loff_t size, void *buf)
 	char *path;
 	int ret;
 
+	if (current != parser_task)
+		return -EPERM;
+
 	bitmap_zero(data_mask, DATA__LAST);
 	bitmap_set(data_mask, DATA_ALGO, 1);
 	bitmap_set(data_mask, DATA_TYPE, 1);
@@ -484,6 +494,10 @@ void __init ima_load_digest_list_metadata(void)
 	loff_t size;
 	int ret;
 
+	/* allow the kernel to read metadata without appraisal verification */
+	parser_task = current;
+	opened_dentry = digest_list_metadata;
+
 	ret = kernel_read_file_from_path(CONFIG_IMA_PARSER_METADATA_PATH,
 					 &datap, &size, 0,
 					 READING_DIGEST_LIST_METADATA);
@@ -491,6 +505,9 @@ void __init ima_load_digest_list_metadata(void)
 		if (ret != -ENOENT)
 			pr_err("Unable to open file: %s (%d)",
 			       CONFIG_IMA_PARSER_METADATA_PATH, ret);
+
+		parser_task = NULL;
+		opened_dentry = NULL;
 		return;
 	}
 
@@ -505,6 +522,9 @@ void __init ima_load_digest_list_metadata(void)
 	ima_parser_metadata_load =  0;
 	vfree(datap);
 
+	parser_task = NULL;
+	opened_dentry = NULL;
+
 	if (ret < 0) {
 		pr_err("Unable to parse file: %s (%d)",
 			CONFIG_IMA_PARSER_METADATA_PATH, ret);
@@ -512,4 +532,51 @@ void __init ima_load_digest_list_metadata(void)
 	}
 
 	ima_exec_parser();
+}
+
+/**************************
+ * Digest list protection *
+ **************************/
+int ima_digest_list_enable_upload(struct dentry *dentry)
+{
+	struct integrity_iint_cache *parser_iint;
+	struct ima_digest *parser_digest;
+	struct file *parser_file;
+	struct mm_struct *mm;
+
+	mm = get_task_mm(current);
+	if (!mm)
+		return 0;
+
+	parser_file = get_mm_exe_file(mm);
+	mmput(mm);
+
+	if (!parser_file)
+		return 0;
+
+	parser_iint = integrity_iint_find(file_inode(parser_file));
+	if (!parser_iint)
+		goto out;
+
+	mutex_lock(&parser_iint->mutex);
+	if (!(parser_iint->flags & IMA_COLLECTED))
+		goto out_unlock;
+
+	parser_digest = ima_lookup_loaded_digest(parser_iint->ima_hash->digest,
+						 parser_iint->ima_hash->algo);
+	if (parser_digest && parser_digest->type == DATA_TYPE_PARSER) {
+		parser_task = current;
+		opened_dentry = dentry;
+	}
+out_unlock:
+	mutex_unlock(&parser_iint->mutex);
+out:
+	fput(parser_file);
+	return (parser_task == current);
+}
+
+void ima_digest_list_disable_upload(void)
+{
+	parser_task = NULL;
+	opened_dentry = NULL;
 }

@@ -59,6 +59,8 @@ extern int ima_hash_algo;
 extern int ima_appraise;
 extern int ima_pcr[2];
 extern int ima_digest_list_pcr_idx;
+extern struct dentry *digest_list_metadata;
+extern struct dentry *digest_list_data;
 
 /* IMA event related data */
 struct ima_event_data {
@@ -172,6 +174,8 @@ int ima_parse_compact_list(loff_t size, void *buf);
 enum hash_algo ima_digest_list_get_algo(struct file *file,
 					struct integrity_iint_cache *iint);
 ssize_t ima_parse_digest_list_metadata(loff_t size, void *buf);
+int ima_digest_list_enable_upload(struct dentry *dentry);
+void ima_digest_list_disable_upload(void);
 #else
 static inline int ima_parse_compact_list(loff_t size, void *buf)
 {
@@ -185,6 +189,13 @@ static inline enum hash_algo ima_digest_list_get_algo(struct file *file,
 static inline ssize_t ima_parse_digest_list_metadata(loff_t size, void *buf)
 {
 	return -ENOTSUPP;
+}
+static inline int ima_digest_list_enable_upload(struct dentry *dentry)
+{
+	return 0;
+}
+static inline void ima_digest_list_disable_upload(void)
+{
 }
 #endif
 int ima_measurements_show(struct seq_file *m, void *v);
