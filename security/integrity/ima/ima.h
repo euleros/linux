@@ -111,7 +111,7 @@ extern struct list_head ima_measurements;	/* list of all measurements */
 #define DIGEST_FLAG_IMMUTABLE	0x02
 
 enum digest_data_types {DATA_TYPE_HEADER, DATA_TYPE_DIGEST_LIST, DATA_TYPE_KEY,
-			DATA_TYPE_PARSER};
+			DATA_TYPE_PARSER, DATA_TYPE_REG_FILE};
 
 struct ima_digest {
 	struct hlist_node hnext;
@@ -166,10 +166,15 @@ int ima_restore_measurement_list(loff_t bufsize, void *buf);
 struct ima_digest *ima_lookup_loaded_digest(u8 *digest, u16 digest_algo);
 int ima_add_digest_data_entry(u8 *digest, u16 digest_algo, u8 flags, u16 type);
 #ifdef CONFIG_IMA_DIGEST_LIST
+int ima_parse_compact_list(loff_t size, void *buf);
 enum hash_algo ima_digest_list_get_algo(struct file *file,
 					struct integrity_iint_cache *iint);
 ssize_t ima_parse_digest_list_metadata(loff_t size, void *buf);
 #else
+static inline int ima_parse_compact_list(loff_t size, void *buf)
+{
+	return -ENOTSUPP;
+}
 static inline enum hash_algo ima_digest_list_get_algo(struct file *file,
 					struct integrity_iint_cache *iint)
 {

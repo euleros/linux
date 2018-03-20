@@ -31,6 +31,87 @@
 
 static int ima_parser_metadata_load;
 
+/***********************
+ * Compact list parser *
+ ***********************/
+enum compact_list_entry_ids {COMPACT_DIGEST, COMPACT_DIGEST_MUTABLE,
+			     COMPACT_DIGEST_LIST};
+
+struct compact_list_hdr {
+	u16 entry_id;
+	u16 algo;
+	u32 count;
+	u32 datalen;
+} __packed;
+
+int ima_parse_compact_list(loff_t size, void *buf)
+{
+	void *bufp = buf, *bufendp = buf + size;
+	struct compact_list_hdr *hdr;
+	u8 flags = 0;
+	u16 type = DATA_TYPE_REG_FILE;
+	int ret, i, digest_len;
+
+	while (bufp < bufendp) {
+		if (bufp + sizeof(*hdr) > bufendp) {
+			pr_err("compact list, missing header\n");
+			return -EINVAL;
+		}
+
+		hdr = bufp;
+
+		if (ima_canonical_fmt) {
+			hdr->entry_id = le16_to_cpu(hdr->entry_id);
+			hdr->algo = le16_to_cpu(hdr->algo);
+			hdr->count = le32_to_cpu(hdr->count);
+			hdr->datalen = le32_to_cpu(hdr->datalen);
+		}
+
+		if (hdr->algo < 0 || hdr->algo >= HASH_ALGO__LAST)
+			return -EINVAL;
+
+		if (hdr->algo != ima_hash_algo)
+			flags |= DIGEST_FLAG_DIGEST_ALGO;
+
+		digest_len = hash_digest_size[hdr->algo];
+
+		switch (hdr->entry_id) {
+		case COMPACT_DIGEST:
+		case COMPACT_DIGEST_LIST:
+			flags |= DIGEST_FLAG_IMMUTABLE;
+
+			if (hdr->entry_id == COMPACT_DIGEST_LIST)
+				type = DATA_TYPE_DIGEST_LIST;
+			break;
+		case COMPACT_DIGEST_MUTABLE:
+			break;
+		default:
+			pr_err("compact list, invalid data type\n");
+			return -EINVAL;
+		}
+
+		bufp += sizeof(*hdr);
+
+		for (i = 0; i < hdr->count &&
+		     bufp + digest_len <= bufendp; i++) {
+			ret = ima_add_digest_data_entry(bufp, hdr->algo,
+							flags, type);
+			if (ret < 0 && ret != -EEXIST)
+				return ret;
+
+			bufp += digest_len;
+		}
+
+		if (i != hdr->count ||
+		    bufp != (void *)hdr + sizeof(*hdr) + hdr->datalen) {
+			pr_err("compact list, invalid data\n");
+			return -EINVAL;
+		}
+	}
+
+	return bufp - buf;
+}
+
 /*******************************
  * Digest list metadata parser *
  *******************************/
