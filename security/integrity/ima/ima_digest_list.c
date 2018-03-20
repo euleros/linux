@@ -26,6 +26,11 @@
 
 #define REQ_METADATA_VERSION 1
 
+#define PARSER_STRING "~parser~\n"
+#define REQ_PARSER_VERSION 1
+
+static int ima_parser_metadata_load;
+
 /*******************************
  * Digest list metadata parser *
  *******************************/
@@ -35,6 +40,41 @@ enum digest_metadata_fields {DATA_ALGO, DATA_TYPE, DATA_TYPE_EXT,
 			     DATA_FILE_PATH, DATA_LENGTH, DATA__LAST};
 
 enum data_sig_formats {SIG_FMT_NONE, SIG_FMT_IMA, SIG_FMT_PGP, SIG_FMT_PKCS7};
+
+static int ima_check_parser(u8 *data, u32 data_len,
+			    u8 **digest, u16 *digest_algo)
+{
+	int parser_len = sizeof(PARSER_STRING) - 1;
+	int digest_len, expected_data_len;
+	u8 *datap = data + data_len - parser_len;
+	u16 version, algo;
+
+	version = *(u16 *)data;
+	if (ima_canonical_fmt)
+		version = le16_to_cpu(version);
+
+	if (version > REQ_PARSER_VERSION)
+		return -EINVAL;
+
+	algo = *(u16 *)(data + sizeof(u16));
+	if (ima_canonical_fmt)
+		algo = le16_to_cpu(algo);
+
+	if (algo < 0 || algo >= HASH_ALGO__LAST)
+		return -EINVAL;
+
+	digest_len = hash_digest_size[algo];
+	expected_data_len = sizeof(u16) * 2 + digest_len + parser_len;
+	if (data_len != expected_data_len)
+		return -EINVAL;
+
+	if (memcmp(datap, PARSER_STRING, parser_len))
+		return -EINVAL;
+
+	*digest = data + 2 * sizeof(u16);
+	*digest_algo = algo;
+	return 0;
+}
 
 static int ima_check_signature(u16 data_algo, u8 *type_ext, u32 type_ext_len,
 			       u8 *digest, u32 digest_len, u16 sig_fmt,
@@ -161,6 +201,10 @@ static void ima_digest_list_set_algo(char *pathname, u16 algo)
 		goto out;
 	}
 
+	/* extended attribute is set by the parser */
+	if (!ima_parser_metadata_load)
+		goto out;
+
 	ret = __vfs_setxattr_noperm(path.dentry, XATTR_NAME_IMA_ALGO,
 				    &algo, sizeof(algo), 0);
 	if (!ret)
@@ -205,7 +249,7 @@ ssize_t ima_parse_digest_list_metadata(loff_t size, void *buf)
 
 	DECLARE_BITMAP(data_mask, DATA__LAST);
 	void *bufp = buf, *bufendp = buf + size;
-	u16 data_algo, data_type, digest_algo, sig_fmt, version;
+	u16 data_algo, data_type, digest_algo, sig_fmt, version, parser_algo;
 	u8 flags = DIGEST_FLAG_IMMUTABLE;
 	u8 *digest;
 	char *path;
@@ -261,6 +305,20 @@ ssize_t ima_parse_digest_list_metadata(loff_t size, void *buf)
 		ret = ima_digest_list_create_key(entry_data[DATA_TYPE_EXT].data,
 						 entry_data[DATA_TYPE_EXT].len);
 		goto out;
+	case DATA_TYPE_PARSER:
+		ret = ima_check_parser(entry_data[DATA_TYPE_EXT].data,
+				       entry_data[DATA_TYPE_EXT].len,
+				       &digest, &parser_algo);
+		if (ret < 0)
+			return ret;
+
+		if (parser_algo != data_algo) {
+			pr_err("Parser digest algorithm mismatch\n");
+			return -EINVAL;
+		}
+
+		digest_algo = parser_algo;
+		break;
 	default:
 		pr_err("Invalid data type %d\n", data_type);
 		return -EINVAL;
@@ -298,4 +356,56 @@ ssize_t ima_parse_digest_list_metadata(loff_t size, void *buf)
 		return ret;
 out:
 	return bufp - buf;
+}
+
+/*******************************
+ * Digest list metadata loader *
+ *******************************/
+static void ima_exec_parser(void)
+{
+	char *argv[5] = {NULL}, *envp[1] = {NULL};
+
+	argv[0] = (char *)CONFIG_IMA_PARSER_BINARY_PATH;
+	argv[1] = "-e";
+	argv[2] = (char *)hash_algo_name[ima_hash_algo];
+#ifndef CONFIG_INTEGRITY_TRUSTED_KEYRING
+	argv[3] = "-c";
+#endif
+	call_usermodehelper(argv[0], argv, envp, UMH_WAIT_PROC);
+}
+
+void __init ima_load_digest_list_metadata(void)
+{
+	void *datap;
+	loff_t size;
+	int ret;
+
+	ret = kernel_read_file_from_path(CONFIG_IMA_PARSER_METADATA_PATH,
+					 &datap, &size, 0,
+					 READING_DIGEST_LIST_METADATA);
+	if (ret < 0) {
+		if (ret != -ENOENT)
+			pr_err("Unable to open file: %s (%d)",
+			       CONFIG_IMA_PARSER_METADATA_PATH, ret);
+		return;
+	}
+
+	ima_parser_metadata_load = 1;
+
+	/* header */
+	ret = ima_parse_digest_list_metadata(size, datap);
+	if (ret > 0)
+		/* parser metadata */
+		ret = ima_parse_digest_list_metadata(size - ret, datap + ret);
+
+	ima_parser_metadata_load =  0;
+	vfree(datap);
+
+	if (ret < 0) {
+		pr_err("Unable to parse file: %s (%d)",
+			CONFIG_IMA_PARSER_METADATA_PATH, ret);
+		return;
+	}
+
+	ima_exec_parser();
 }

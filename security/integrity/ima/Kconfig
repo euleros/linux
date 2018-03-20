@@ -238,3 +238,17 @@ config IMA_DIGEST_LIST
 	   of accessed files are found in one of those lists, no new entries are
 	   added to the measurement list, and access to the file is granted if
 	   appraisal is in enforcing mode.
+
+config IMA_PARSER_METADATA_PATH
+	string "IMA digest list parser metadata path"
+	depends on IMA_DIGEST_LIST
+	default "/etc/ima/digest_lists/parser_metadata"
+	help
+	   This option defines the parser metadata path.
+
+config IMA_PARSER_BINARY_PATH
+	string "IMA digest list parser binary path"
+	depends on IMA_DIGEST_LIST
+	default "/usr/bin/upload_digest_lists"
+	help
+	   This option defines the parser binary path.
