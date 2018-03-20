@@ -285,6 +285,8 @@ static int process_measurement(struct file *file, const struct cred *cred,
 		xattr_len = ima_read_xattr(file_dentry(file), &xattr_value);
 
 	hash_algo = ima_get_hash_algo(xattr_value, xattr_len);
+	if (xattr_len <= 0)
+		hash_algo = ima_digest_list_get_algo(file, iint);
 
 	rc = ima_collect_measurement(iint, file, buf, size, hash_algo);
 	if (rc != 0 && rc != -EBADF && rc != -EINVAL)

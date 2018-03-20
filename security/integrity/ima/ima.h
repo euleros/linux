@@ -165,8 +165,15 @@ int ima_restore_measurement_list(loff_t bufsize, void *buf);
 struct ima_digest *ima_lookup_loaded_digest(u8 *digest, u16 digest_algo);
 int ima_add_digest_data_entry(u8 *digest, u16 digest_algo, u8 flags, u16 type);
 #ifdef CONFIG_IMA_DIGEST_LIST
+enum hash_algo ima_digest_list_get_algo(struct file *file,
+					struct integrity_iint_cache *iint);
 ssize_t ima_parse_digest_list_metadata(loff_t size, void *buf);
 #else
+static inline enum hash_algo ima_digest_list_get_algo(struct file *file,
+					struct integrity_iint_cache *iint)
+{
+	return ima_hash_algo;
+}
 static inline ssize_t ima_parse_digest_list_metadata(loff_t size, void *buf)
 {
 	return -ENOTSUPP;

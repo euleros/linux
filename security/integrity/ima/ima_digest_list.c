@@ -17,6 +17,9 @@
 #include <linux/vmalloc.h>
 #include <linux/module.h>
 #include <linux/verification.h>
+#include <linux/namei.h>
+#include <linux/xattr.h>
+#include <linux/magic.h>
 
 #include "ima.h"
 #include "ima_template_lib.h"
@@ -133,6 +136,61 @@ static int ima_digest_list_create_key(u8 *payload, u32 len)
 	return 0;
 }
 
+static void ima_digest_list_set_algo(char *pathname, u16 algo)
+{
+	struct integrity_iint_cache *iint;
+	struct path path;
+	int ret;
+
+	if (!pathname)
+		return;
+
+	ret = kern_path(pathname, LOOKUP_FOLLOW, &path);
+	if (ret < 0)
+		return;
+
+	if (path.dentry->d_inode->i_sb->s_magic == RAMFS_MAGIC) {
+		iint = integrity_inode_get(path.dentry->d_inode);
+		if (iint && !iint->ima_hash) {
+			iint->ima_hash = kmalloc(sizeof(*iint->ima_hash),
+						 GFP_NOFS);
+			if (iint->ima_hash)
+				iint->ima_hash->algo = algo;
+		}
+
+		goto out;
+	}
+
+	ret = __vfs_setxattr_noperm(path.dentry, XATTR_NAME_IMA_ALGO,
+				    &algo, sizeof(algo), 0);
+	if (!ret)
+		goto out;
+out:
+	path_put(&path);
+}
+
+enum hash_algo ima_digest_list_get_algo(struct file *file,
+					struct integrity_iint_cache *iint)
+{
+	struct dentry *dentry = file_dentry(file);
+	u16 xattr_algo;
+	int ret;
+
+	if (dentry->d_inode->i_sb->s_magic == RAMFS_MAGIC) {
+		if (iint->ima_hash)
+			return iint->ima_hash->algo;
+
+		goto out;
+	}
+
+	ret = __vfs_getxattr(dentry, dentry->d_inode, XATTR_NAME_IMA_ALGO,
+			     &xattr_algo, sizeof(xattr_algo));
+	if (ret == sizeof(xattr_algo))
+		return xattr_algo;
+out:
+	return ima_hash_algo;
+}
+
 ssize_t ima_parse_digest_list_metadata(loff_t size, void *buf)
 {
 	struct ima_field_data entry;
@@ -215,6 +273,7 @@ ssize_t ima_parse_digest_list_metadata(loff_t size, void *buf)
 		}
 
 		flags |= DIGEST_FLAG_DIGEST_ALGO;
+		ima_digest_list_set_algo(path, digest_algo);
 	}
 
 	if (ima_policy_flag & IMA_APPRAISE) {
