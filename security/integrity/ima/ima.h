@@ -110,7 +110,7 @@ extern struct list_head ima_measurements;	/* list of all measurements */
 #define DIGEST_FLAG_DIGEST_ALGO 0x01
 #define DIGEST_FLAG_IMMUTABLE	0x02
 
-enum digest_data_types {DATA_TYPE_HEADER, DATA_TYPE_DIGEST_LIST};
+enum digest_data_types {DATA_TYPE_HEADER, DATA_TYPE_DIGEST_LIST, DATA_TYPE_KEY};
 
 struct ima_digest {
 	struct hlist_node hnext;

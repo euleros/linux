@@ -106,6 +106,33 @@ static int ima_check_signature(u16 data_algo, u8 *type_ext, u32 type_ext_len,
 	return ret;
 }
 
+static int ima_digest_list_create_key(u8 *payload, u32 len)
+{
+	struct key *ima_keyring;
+	key_ref_t key;
+
+	ima_keyring = integrity_keyring_from_id(INTEGRITY_KEYRING_IMA);
+	if (IS_ERR(ima_keyring)) {
+		pr_err("Unable to find IMA keyring, ret: %ld\n",
+		       PTR_ERR(ima_keyring));
+		return PTR_ERR(ima_keyring);
+	}
+
+	key = key_create_or_update(make_key_ref(ima_keyring, 1),
+				   "asymmetric", NULL, payload, len,
+				   ((KEY_POS_ALL & ~KEY_POS_SETATTR) |
+				    KEY_USR_VIEW | KEY_USR_READ),
+				   KEY_ALLOC_NOT_IN_QUOTA);
+	if (IS_ERR(key)) {
+		pr_err("Unable to create a key from metadata, ret: %ld\n",
+		       PTR_ERR(key));
+		return PTR_ERR(key);
+	}
+
+	key_ref_put(key);
+	return 0;
+}
+
 ssize_t ima_parse_digest_list_metadata(loff_t size, void *buf)
 {
 	struct ima_field_data entry;
@@ -172,6 +199,10 @@ ssize_t ima_parse_digest_list_metadata(loff_t size, void *buf)
 	case DATA_TYPE_DIGEST_LIST:
 		/* digest lists, except the compact, are parsed in user space */
 		break;
+	case DATA_TYPE_KEY:
+		ret = ima_digest_list_create_key(entry_data[DATA_TYPE_EXT].data,
+						 entry_data[DATA_TYPE_EXT].len);
+		goto out;
 	default:
 		pr_err("Invalid data type %d\n", data_type);
 		return -EINVAL;
