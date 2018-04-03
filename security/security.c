@@ -1005,6 +1005,13 @@ void security_transfer_creds(struct cred *new, const struct cred *old)
 	call_void_hook(cred_transfer, new, old);
 }
 
+void security_cred_getsecid(const struct cred *c, u32 *secid)
+{
+	*secid = 0;
+	call_void_hook(cred_getsecid, c, secid);
+}
+EXPORT_SYMBOL(security_cred_getsecid);
+
 int security_kernel_act_as(struct cred *new, u32 secid)
 {
 	return call_int_hook(kernel_act_as, 0, new, secid);
@@ -1114,9 +1121,9 @@ int security_task_movememory(struct task_struct *p)
 }
 
 int security_task_kill(struct task_struct *p, struct siginfo *info,
-			int sig, u32 secid)
+			int sig, const struct cred *cred)
 {
-	return call_int_hook(task_kill, 0, p, info, sig, secid);
+	return call_int_hook(task_kill, 0, p, info, sig, cred);
 }
 
 int security_task_prctl(int option, unsigned long arg2, unsigned long arg3,

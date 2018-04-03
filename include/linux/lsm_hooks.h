@@ -554,6 +554,10 @@
  *	@new points to the new credentials.
  *	@old points to the original credentials.
  *	Transfer data from original creds to new creds
+ * @cred_getsecid:
+ *	Retrieve the security identifier of the cred structure @c
+ *	@c contains the credentials, secid will be placed into @secid.
+ *	In case of failure, @secid will be set to zero.
  * @kernel_act_as:
  *	Set the credentials for a kernel service to act as (subjective context).
  *	@new points to the credentials to be modified.
@@ -672,7 +676,8 @@
  *	@p contains the task_struct for process.
  *	@info contains the signal information.
  *	@sig contains the signal value.
- *	@secid contains the sid of the process where the signal originated
+ *	@cred contains the cred of the process where the signal originated, or
+ *	NULL if the current task is the originator.
  *	Return 0 if permission is granted.
  * @task_prctl:
  *	Check permission before performing a process control operation on the
@@ -1541,6 +1546,7 @@ union security_list_options {
 	int (*cred_prepare)(struct cred *new, const struct cred *old,
 				gfp_t gfp);
 	void (*cred_transfer)(struct cred *new, const struct cred *old);
+	void (*cred_getsecid)(const struct cred *c, u32 *secid);
 	int (*kernel_act_as)(struct cred *new, u32 secid);
 	int (*kernel_create_files_as)(struct cred *new, struct inode *inode);
 	int (*kernel_module_request)(char *kmod_name);
@@ -1564,7 +1570,7 @@ union security_list_options {
 	int (*task_getscheduler)(struct task_struct *p);
 	int (*task_movememory)(struct task_struct *p);
 	int (*task_kill)(struct task_struct *p, struct siginfo *info,
-				int sig, u32 secid);
+				int sig, const struct cred *cred);
 	int (*task_prctl)(int option, unsigned long arg2, unsigned long arg3,
 				unsigned long arg4, unsigned long arg5);
 	void (*task_to_inode)(struct task_struct *p, struct inode *inode);
@@ -1824,6 +1830,7 @@ struct security_hook_heads {
 	struct list_head cred_free;
 	struct list_head cred_prepare;
 	struct list_head cred_transfer;
+	struct list_head cred_getsecid;
 	struct list_head kernel_act_as;
 	struct list_head kernel_create_files_as;
 	struct list_head kernel_read_file;
