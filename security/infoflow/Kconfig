@@ -1,0 +1,6 @@
+config SECURITY_INFOFLOW
+	bool "Infoflow LSM"
+	select SECURITYFS
+	help
+	  Infoflow LSM enforces the Clark-Wilson policy on top of existing LSMs,
+	  such as SELinux and SMACK.

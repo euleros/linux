@@ -1673,6 +1673,29 @@
 			different crypto accelerators. This option can be used
 			to achieve best performance for particular HW.
 
+	infoflow=	[INFOFLOW] Disable or enable Infoflow LSM at boot time.
+			Format: { "0" | "1" }
+			0 -- disable.
+			1 -- enable.
+
+	infoflow_mode=  [INFOFLOW] Set Infoflow LSM mode.
+			Format: { "disabled" | "discover" | "enforce" |
+				  "enforce-audit" };
+			disabled      -- LSM disabled.
+			discover      -- record operations and labels set by
+					 a parent LSM (e.g. SELinux, SMACK).
+			enforce       -- enforce Clark-Wilson integrity policy.
+			enforce-audit -- enforce Clark-Wilson integrity policy
+					 and record denied operations.
+			permissive    -- check Clark-Wilson integrity policy
+					 but don't enforce decision.
+			permissive-audit  -- check Clark-Wilson integrity policy
+					     and record decision.
+
+	infoflow_promote  [INFOFLOW] Promote low integrity objects that would
+				     cause a read-down violation of the
+				     Clark-Wilson integrity policy.
+
 	init=		[KNL]
 			Format: <full_path>
 			Run specified binary instead of /sbin/init as init

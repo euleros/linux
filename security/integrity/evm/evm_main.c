@@ -51,6 +51,7 @@ static struct xattr_list evm_config_default_xattrnames[] = {
 #ifdef CONFIG_IMA_APPRAISE
 	{.name = XATTR_NAME_IMA},
 #endif
+	{.name = XATTR_NAME_INFOFLOW},
 	{.name = XATTR_NAME_CAPS},
 };
 
