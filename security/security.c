@@ -634,6 +634,20 @@ static void __init lsm_early_task(struct task_struct *task)
 	RC;							\
 })
 
+#define call_int_hook_and(FUNC, IRC, ...) ({			\
+	int RC = IRC;						\
+	do {							\
+		struct security_hook_list *P;			\
+								\
+		hlist_for_each_entry(P, &security_hook_heads.FUNC, list) { \
+			RC = P->hook.FUNC(__VA_ARGS__);		\
+			if (!RC)				\
+				break;				\
+		}						\
+	} while (0);						\
+	RC;							\
+})
+
 /* Security operations */
 
 int security_binder_set_context_mgr(struct task_struct *mgr)
@@ -2339,7 +2353,7 @@ int security_audit_rule_init(u32 field, u32 op, char *rulestr, void **lsmrule)
 
 int security_audit_rule_known(struct audit_krule *krule)
 {
-	return call_int_hook(audit_rule_known, 0, krule);
+	return call_int_hook_and(audit_rule_known, 0, krule);
 }
 
 void security_audit_rule_free(void *lsmrule)
@@ -2349,7 +2363,8 @@ void security_audit_rule_free(void *lsmrule)
 
 int security_audit_rule_match(u32 secid, u32 field, u32 op, void *lsmrule)
 {
-	return call_int_hook(audit_rule_match, 0, secid, field, op, lsmrule);
+	return call_int_hook_and(audit_rule_match, 0, secid, field, op,
+				 lsmrule);
 }
 #endif /* CONFIG_AUDIT */
 
