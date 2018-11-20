@@ -11,6 +11,7 @@
 #include <crypto/sha.h>
 #include <linux/key.h>
 #include <linux/audit.h>
+#include <linux/hash_info.h>
 
 /* iint action cache flags */
 #define IMA_MEASURE		0x00000001
@@ -125,6 +126,17 @@ struct integrity_iint_cache {
 	enum integrity_status ima_creds_status:4;
 	enum integrity_status evm_status:4;
 	struct ima_digest_data *ima_hash;
+};
+
+enum compact_types { COMPACT_KEY, COMPACT_PARSER, COMPACT_FILE, COMPACT__LAST };
+enum compact_modifiers { COMPACT_MOD_IMMUTABLE, COMPACT_MOD__LAST };
+
+struct ima_digest {
+	struct hlist_node hnext;
+	enum hash_algo algo;
+	enum compact_types type;
+	u16 modifiers;
+	u8 digest[0];
 };
 
 /* rbtree tree calls to lookup, insert, delete
