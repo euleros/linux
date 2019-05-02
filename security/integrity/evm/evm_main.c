@@ -56,14 +56,16 @@ static struct xattr_list evm_config_default_xattrnames[] = {
 
 LIST_HEAD(evm_config_xattrnames);
 
-static int evm_fixmode;
-static int __init evm_set_fixmode(char *str)
+static int evm_fixmode, evm_random_key;
+static int __init evm_setup(char *str)
 {
 	if (strncmp(str, "fix", 3) == 0)
 		evm_fixmode = 1;
+	if (strncmp(str, "random", 6) == 0)
+		evm_random_key = 1;
 	return 0;
 }
-__setup("evm=", evm_set_fixmode);
+__setup("evm=", evm_setup);
 
 static void __init evm_init_config(void)
 {
@@ -87,6 +89,11 @@ static void __init evm_init_config(void)
 static bool evm_key_loaded(void)
 {
 	return (bool)(evm_initialized & EVM_KEY_MASK);
+}
+
+static bool evm_persistent_key_loaded(void)
+{
+	return (bool)(evm_initialized & EVM_PERSISTENT_KEY_MASK);
 }
 
 static int evm_find_protected_xattrs(struct dentry *dentry)
@@ -149,7 +156,9 @@ static enum integrity_status evm_verify_hmac(struct dentry *dentry,
 				GFP_NOFS);
 	if (rc <= 0) {
 		evm_status = INTEGRITY_FAIL;
-		if (rc == -ENODATA) {
+		if (!evm_persistent_key_loaded()) {
+			evm_status = INTEGRITY_UNKNOWN;
+		} else if (rc == -ENODATA) {
 			rc = evm_find_protected_xattrs(dentry);
 			if (rc > 0)
 				evm_status = INTEGRITY_NOLABEL;
@@ -161,11 +170,18 @@ static enum integrity_status evm_verify_hmac(struct dentry *dentry,
 		goto out;
 	}
 
+	if (xattr_data->type != EVM_XATTR_HMAC_RND_KEY &&
+	    !evm_persistent_key_loaded()) {
+		evm_status = INTEGRITY_UNKNOWN;
+		goto out;
+	}
+
 	xattr_len = rc;
 
 	/* check value type */
 	switch (xattr_data->type) {
 	case EVM_XATTR_HMAC:
+	case EVM_XATTR_HMAC_RND_KEY:
 		if (xattr_len != sizeof(struct evm_ima_xattr_data)) {
 			evm_status = INTEGRITY_FAIL;
 			goto out;
@@ -173,7 +189,7 @@ static enum integrity_status evm_verify_hmac(struct dentry *dentry,
 
 		digest.hdr.algo = HASH_ALGO_SHA1;
 		rc = evm_calc_hmac(dentry, xattr_name, xattr_value,
-				   xattr_value_len, &digest);
+				   xattr_value_len, xattr_data->type, &digest);
 		if (rc)
 			break;
 		rc = crypto_memneq(xattr_data->digest, digest.digest,
@@ -291,10 +307,14 @@ EXPORT_SYMBOL_GPL(evm_verifyxattr);
 static enum integrity_status evm_verify_current_integrity(struct dentry *dentry)
 {
 	struct inode *inode = d_backing_inode(dentry);
+	int rc;
 
 	if (!evm_key_loaded() || !S_ISREG(inode->i_mode) || evm_fixmode)
 		return 0;
-	return evm_verify_hmac(dentry, NULL, NULL, 0, NULL);
+	rc = evm_verify_hmac(dentry, NULL, NULL, 0, NULL);
+	if (rc == INTEGRITY_UNKNOWN && !evm_persistent_key_loaded())
+		return 0;
+	return rc;
 }
 
 /*
@@ -520,18 +540,26 @@ int evm_inode_init_security(struct inode *inode,
 				 const struct xattr *lsm_xattr,
 				 struct xattr *evm_xattr)
 {
+	enum evm_ima_xattr_type evm_default_type = EVM_XATTR_HMAC;
 	struct evm_ima_xattr_data *xattr_data;
 	int rc;
 
 	if (!evm_key_loaded() || !evm_protected_xattr(lsm_xattr->name))
 		return 0;
 
+	if (!evm_persistent_key_loaded()) {
+		if (inode->i_sb->s_magic != TMPFS_MAGIC)
+			return 0;
+
+		evm_default_type = EVM_XATTR_HMAC_RND_KEY;
+	}
+
 	xattr_data = kzalloc(sizeof(*xattr_data), GFP_NOFS);
 	if (!xattr_data)
 		return -ENOMEM;
 
-	xattr_data->type = EVM_XATTR_HMAC;
-	rc = evm_init_hmac(inode, lsm_xattr, xattr_data->digest);
+	xattr_data->type = evm_default_type;
+	rc = evm_init_hmac(inode, lsm_xattr, xattr_data);
 	if (rc < 0)
 		goto out;
 
@@ -580,6 +608,9 @@ error:
 				list_del(pos);
 		}
 	}
+
+	if (!error && evm_random_key)
+		evm_set_random_key();
 
 	return error;
 }

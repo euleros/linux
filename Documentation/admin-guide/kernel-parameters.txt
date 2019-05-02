@@ -1239,9 +1239,11 @@
 			has equivalent usage. See its documentation for details.
 
 	evm=		[EVM]
-			Format: { "fix" }
-			Permit 'security.evm' to be updated regardless of
-			current integrity status.
+			Format: { "fix" | "random" }
+			Specify "fix" to permit 'security.evm' to be updated
+			regardless of current integrity status. Specify "random"
+			to initialize EVM with a random key to be used for new
+			files until the persistent HMAC key is loaded.
 
 	failslab=
 	fail_page_alloc=
