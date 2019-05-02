@@ -14,8 +14,10 @@
 #include <linux/evm.h>
 
 #include "ima.h"
+#include "ima_digest_list.h"
 
 static bool ima_appraise_req_evm __ro_after_init;
+static bool ima_appraise_no_metadata __ro_after_init;
 static int __init default_appraise_setup(char *str)
 {
 #ifdef CONFIG_IMA_APPRAISE_BOOTPARAM
@@ -29,6 +31,14 @@ static int __init default_appraise_setup(char *str)
 	if (strcmp(str, "enforce-evm") == 0 ||
 	    strcmp(str, "log-evm") == 0)
 		ima_appraise_req_evm = true;
+#ifdef CONFIG_IMA_DIGEST_LIST
+	if (!strncmp(str, "digest", 6)) {
+		ima_digest_list_actions |= IMA_APPRAISE;
+
+		if (!strcmp(str + 6, "-nometadata"))
+			ima_appraise_no_metadata = true;
+	}
+#endif
 	return 1;
 }
 
@@ -73,6 +83,8 @@ static int ima_fix_xattr(struct dentry *dentry,
 	} else {
 		offset = 0;
 		iint->ima_hash->xattr.ng.type = IMA_XATTR_DIGEST_NG;
+		if (iint->flags & IMA_DIGEST_LISTS)
+			iint->ima_hash->xattr.ng.type = IMA_XATTR_DIGEST_LIST;
 		iint->ima_hash->xattr.ng.algo = algo;
 	}
 	rc = __vfs_setxattr_noperm(dentry, XATTR_NAME_IMA,
@@ -163,7 +175,7 @@ int ima_appraise_measurement(enum ima_hooks func,
 			     struct integrity_iint_cache *iint,
 			     struct file *file, const unsigned char *filename,
 			     struct evm_ima_xattr_data *xattr_value,
-			     int xattr_len)
+			     int xattr_len, struct ima_digest *found_digest)
 {
 	static const char op[] = "appraise_data";
 	const char *cause = "unknown";
@@ -192,6 +204,22 @@ int ima_appraise_measurement(enum ima_hooks func,
 		    (!(iint->flags & IMA_DIGSIG_REQUIRED) ||
 		     (inode->i_size == 0)))
 			status = INTEGRITY_PASS;
+		if (found_digest) {
+			if (!evm_key_loaded() || ima_appraise_no_metadata)
+				status = INTEGRITY_PASS;
+
+			if (!ima_digest_is_immutable(found_digest)) {
+				if ((iint->flags & IMA_DIGSIG_REQUIRED)) {
+					cause = "IMA-signature-required";
+					status = INTEGRITY_FAIL;
+					goto out;
+				}
+				clear_bit(IMA_DIGSIG, &iint->atomic_flags);
+				iint->flags |= IMA_DIGEST_LISTS;
+			} else {
+				set_bit(IMA_DIGSIG, &iint->atomic_flags);
+			}
+		}
 		goto out;
 	}
 
@@ -217,6 +245,13 @@ int ima_appraise_measurement(enum ima_hooks func,
 	}
 
 	switch (xattr_value->type) {
+	case IMA_XATTR_DIGEST_LIST:
+		if (!ima_appraise_no_metadata) {
+			cause = "IMA-xattr-untrusted";
+			status = INTEGRITY_FAIL;
+			break;
+		}
+		iint->flags |= IMA_DIGEST_LISTS;
 	case IMA_XATTR_DIGEST_NG:
 		/* first byte contains algorithm id */
 		hash_start = 1;

@@ -86,7 +86,7 @@ static void __init evm_init_config(void)
 	pr_info("HMAC attrs: 0x%x\n", evm_hmac_attrs);
 }
 
-static bool evm_key_loaded(void)
+bool evm_key_loaded(void)
 {
 	return (bool)(evm_initialized & EVM_KEY_MASK);
 }

@@ -1588,7 +1588,8 @@
 
 	ima_appraise=	[IMA] appraise integrity measurements
 			Format: { "off" | "enforce" | "fix" | "log" |
-				  "enforce-evm" | "log-evm" }
+				  "enforce-evm" | "log-evm" | "digest" |
+				  "digest-nometadata" }
 			default: "enforce"
 
 	ima_appraise_tcb [IMA] Deprecated.  Use ima_policy= instead.
