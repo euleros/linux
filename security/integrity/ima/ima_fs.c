@@ -27,6 +27,14 @@
 
 static DEFINE_MUTEX(ima_write_mutex);
 
+static struct dentry *ima_dir;
+static struct dentry *ima_symlink;
+static struct dentry *binary_runtime_measurements;
+static struct dentry *ascii_runtime_measurements;
+static struct dentry *runtime_measurements_count;
+static struct dentry *violations;
+static struct dentry *ima_policy;
+
 bool ima_canonical_fmt;
 static int __init default_canonical_fmt_setup(char *str)
 {
@@ -319,25 +327,32 @@ static ssize_t ima_read_file(char *path, enum kernel_read_file_id file_id)
 		return pathlen;
 }
 
-static ssize_t ima_write_policy(struct file *file, const char __user *buf,
-				size_t datalen, loff_t *ppos)
+static ssize_t ima_write_data(struct file *file, const char __user *buf,
+			      size_t datalen, loff_t *ppos)
 {
 	char *data;
 	ssize_t result;
-
-	if (datalen >= PAGE_SIZE)
-		datalen = PAGE_SIZE - 1;
+	struct dentry *dentry = file_dentry(file);
 
 	/* No partial writes. */
 	result = -EINVAL;
 	if (*ppos != 0)
 		goto out;
 
-	data = memdup_user_nul(buf, datalen);
-	if (IS_ERR(data)) {
-		result = PTR_ERR(data);
+	result = -EFBIG;
+	if (datalen + 1 > 64 * 1024 * 1024)
 		goto out;
-	}
+
+	result = -ENOMEM;
+	data = vmalloc(datalen + 1);
+	if (!data)
+		goto out;
+
+	result = -EFAULT;
+	if (copy_from_user(data, buf, datalen) != 0)
+		goto out_free;
+
+	data[datalen] = '\0';
 
 	result = mutex_lock_interruptible(&ima_write_mutex);
 	if (result < 0)
@@ -345,33 +360,30 @@ static ssize_t ima_write_policy(struct file *file, const char __user *buf,
 
 	if (data[0] == '/') {
 		result = ima_read_file(data, READING_POLICY);
-	} else if (ima_appraise & IMA_APPRAISE_POLICY) {
-		pr_err("signed policy file (specified as an absolute pathname) required\n");
-		integrity_audit_msg(AUDIT_INTEGRITY_STATUS, NULL, NULL,
-				    "policy_update", "signed policy required",
-				    1, 0);
-		if (ima_appraise & IMA_APPRAISE_ENFORCE)
-			result = -EACCES;
+	} else if (dentry == ima_policy) {
+		if (ima_appraise & IMA_APPRAISE_POLICY) {
+			pr_err("signed policy file (specified as an absolute pathname) required\n");
+			integrity_audit_msg(AUDIT_INTEGRITY_STATUS, NULL, NULL,
+					    "policy_update",
+					    "signed policy required", 1, 0);
+			if (ima_appraise & IMA_APPRAISE_ENFORCE)
+				result = -EACCES;
+		} else {
+			result = ima_parse_add_rule(data);
+		}
 	} else {
-		result = ima_parse_add_rule(data);
+		pr_err("Unknown data type\n");
+		result = -EINVAL;
 	}
 	mutex_unlock(&ima_write_mutex);
 out_free:
-	kfree(data);
+	vfree(data);
 out:
-	if (result < 0)
+	if (dentry == ima_policy && result < 0)
 		valid_policy = 0;
 
 	return result;
 }
-
-static struct dentry *ima_dir;
-static struct dentry *ima_symlink;
-static struct dentry *binary_runtime_measurements;
-static struct dentry *ascii_runtime_measurements;
-static struct dentry *runtime_measurements_count;
-static struct dentry *violations;
-static struct dentry *ima_policy;
 
 enum ima_fs_flags {
 	IMA_FS_BUSY,
@@ -453,7 +465,7 @@ static int ima_release_policy(struct inode *inode, struct file *file)
 
 static const struct file_operations ima_measure_policy_ops = {
 	.open = ima_open_policy,
-	.write = ima_write_policy,
+	.write = ima_write_data,
 	.read = seq_read,
 	.release = ima_release_policy,
 	.llseek = generic_file_llseek,
