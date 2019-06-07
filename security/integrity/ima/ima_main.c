@@ -39,6 +39,10 @@ int ima_appraise;
 
 /* Actions (measure/appraisal) for which digest lists can be used */
 int ima_digest_list_actions;
+/* PCR used for digest list measurements */
+int ima_digest_list_pcr = -1;
+/* Flag to include standard measurement if digest list PCR is specified */
+bool ima_plus_standard_pcr;
 
 int ima_hash_algo = HASH_ALGO_SHA1;
 static int hash_setup_done;
@@ -384,7 +388,10 @@ static int process_measurement(struct file *file, const struct cred *cred,
 	if (action & IMA_MEASURE)
 		ima_store_measurement(iint, file, pathname,
 				      xattr_value, xattr_len, pcr,
-				      template_desc);
+				      template_desc,
+				      ima_digest_allow(found_digest,
+						       IMA_MEASURE));
+
 	if (rc == 0 && (action & IMA_APPRAISE_SUBMASK)) {
 		inode_lock(inode);
 		rc = ima_appraise_measurement(func, iint, file, pathname,
