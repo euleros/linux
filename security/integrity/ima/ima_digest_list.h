@@ -26,6 +26,9 @@ extern struct ima_h_table ima_digests_htable;
 
 struct ima_digest *ima_lookup_digest(u8 *digest, enum hash_algo algo);
 int ima_parse_compact_list(loff_t size, void *buf);
+bool ima_check_current_is_parser(void);
+void ima_set_parser(struct task_struct *parser);
+struct task_struct *ima_get_parser(void);
 #else
 static inline struct ima_digest *ima_lookup_digest(u8 *digest,
 						   enum hash_algo algo)
@@ -35,6 +38,17 @@ static inline struct ima_digest *ima_lookup_digest(u8 *digest,
 static inline int ima_parse_compact_list(loff_t size, void *buf)
 {
 	return -ENOTSUPP;
+}
+static inline bool ima_check_current_is_parser(void)
+{
+	return false;
+}
+static inline void ima_set_parser(struct task_struct *parser)
+{
+}
+static inline struct task_struct *ima_get_parser(void)
+{
+	return NULL;
 }
 #endif /*CONFIG_IMA_DIGEST_LIST*/
 #endif /*LINUX_IMA_DIGEST_LIST_H*/

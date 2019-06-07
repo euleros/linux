@@ -17,6 +17,8 @@
 
 #include <linux/vmalloc.h>
 #include <linux/module.h>
+#include <linux/file.h>
+#include <linux/sched/mm.h>
 
 #include "ima.h"
 #include "ima_digest_list.h"
@@ -149,4 +151,56 @@ int ima_parse_compact_list(loff_t size, void *buf)
 	}
 
 	return bufp - buf;
+}
+
+/****************
+ * Parser check *
+ ****************/
+bool ima_check_current_is_parser(void)
+{
+	struct integrity_iint_cache *parser_iint;
+	struct ima_digest *parser_digest = NULL;
+	struct file *parser_file;
+	struct mm_struct *mm;
+
+	mm = get_task_mm(current);
+	if (!mm)
+		return false;
+
+	parser_file = get_mm_exe_file(mm);
+	mmput(mm);
+
+	if (!parser_file)
+		return false;
+
+	parser_iint = integrity_iint_find(file_inode(parser_file));
+	fput(parser_file);
+
+	if (!parser_iint)
+		return false;
+
+	/* flag cannot be cleared due to write protection of executables */
+	if (!(parser_iint->flags & IMA_COLLECTED))
+		return false;
+
+	parser_digest = ima_lookup_digest(parser_iint->ima_hash->digest,
+					  parser_iint->ima_hash->algo);
+
+	return (parser_digest && parser_digest->type == COMPACT_PARSER);
+}
+
+/*
+ * Current parser set and reset respectively during open() and close() of
+ * /sys/kernel/security/ima/digest_list_data.
+ */
+static struct task_struct *current_parser;
+
+void ima_set_parser(struct task_struct *parser)
+{
+	current_parser = parser;
+}
+
+struct task_struct *ima_get_parser(void)
+{
+	return current_parser;
 }
