@@ -29,6 +29,10 @@ int ima_parse_compact_list(loff_t size, void *buf);
 bool ima_check_current_is_parser(void);
 void ima_set_parser(struct task_struct *parser);
 struct task_struct *ima_get_parser(void);
+void ima_check_parser_action(struct inode *inode, enum ima_hooks hook,
+			     int mask, int action, bool check_digest,
+			     struct ima_digest *digest);
+struct ima_digest *ima_digest_allow(struct ima_digest *digest, int action);
 #else
 static inline struct ima_digest *ima_lookup_digest(u8 *digest,
 						   enum hash_algo algo)
@@ -47,6 +51,17 @@ static inline void ima_set_parser(struct task_struct *parser)
 {
 }
 static inline struct task_struct *ima_get_parser(void)
+{
+	return NULL;
+}
+static inline void ima_check_parser_action(struct inode *inode,
+					   enum ima_hooks hook, int mask,
+					   int action, bool check_digest,
+					   struct ima_digest *digest)
+{
+}
+static inline struct ima_digest *ima_digest_allow(struct ima_digest *digest,
+						  int action)
 {
 	return NULL;
 }

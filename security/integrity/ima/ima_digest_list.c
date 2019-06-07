@@ -163,6 +163,9 @@ bool ima_check_current_is_parser(void)
 	struct file *parser_file;
 	struct mm_struct *mm;
 
+	if (!(ima_digest_list_actions & ima_policy_flag))
+		return false;
+
 	mm = get_task_mm(current);
 	if (!mm)
 		return false;
@@ -203,4 +206,37 @@ void ima_set_parser(struct task_struct *parser)
 struct task_struct *ima_get_parser(void)
 {
 	return current_parser;
+}
+
+/**********************
+ * Digest usage check *
+ **********************/
+void ima_check_parser_action(struct inode *inode, enum ima_hooks hook,
+			     int mask, int action, bool check_digest,
+			     struct ima_digest *digest)
+{
+	int action_mask = (IMA_DO_MASK & ~IMA_APPRAISE_SUBMASK);
+
+	if (current != current_parser)
+		return;
+
+	if (!(mask & (MAY_READ | MAY_EXEC)))
+		return;
+
+	if (hook == MMAP_CHECK && mask == MAY_EXEC && check_digest &&
+	    (!digest || digest->type != COMPACT_PARSER))
+		action_mask = 0;
+
+	if (!S_ISREG(inode->i_mode) && !S_ISDIR(inode->i_mode))
+		action_mask = 0;
+
+	ima_digest_list_actions &= (action & action_mask);
+}
+
+struct ima_digest *ima_digest_allow(struct ima_digest *digest, int action)
+{
+	if (!(ima_digest_list_actions & action))
+		return NULL;
+
+	return digest;
 }

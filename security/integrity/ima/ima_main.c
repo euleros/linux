@@ -29,12 +29,16 @@
 #include <linux/fs.h>
 
 #include "ima.h"
+#include "ima_digest_list.h"
 
 #ifdef CONFIG_IMA_APPRAISE
 int ima_appraise = IMA_APPRAISE_ENFORCE;
 #else
 int ima_appraise;
 #endif
+
+/* Actions (measure/appraisal) for which digest lists can be used */
+int ima_digest_list_actions;
 
 int ima_hash_algo = HASH_ALGO_SHA1;
 static int hash_setup_done;
@@ -252,10 +256,14 @@ static int process_measurement(struct file *file, const struct cred *cred,
 	const char *pathname = NULL;
 	int rc = 0, action, must_appraise = 0;
 	int pcr = CONFIG_IMA_MEASURE_PCR_IDX;
+	struct ima_digest *found_digest = NULL;
 	struct evm_ima_xattr_data *xattr_value = NULL;
 	int xattr_len = 0;
 	bool violation_check;
 	enum hash_algo hash_algo;
+
+	ima_check_parser_action(inode, func, mask, ima_policy_flag, false,
+				NULL);
 
 	if (!ima_policy_flag || !S_ISREG(inode->i_mode))
 		return 0;
@@ -268,6 +276,9 @@ static int process_measurement(struct file *file, const struct cred *cred,
 				&template_desc);
 	violation_check = ((func == FILE_CHECK || func == MMAP_CHECK) &&
 			   (ima_policy_flag & IMA_MEASURE));
+
+	ima_check_parser_action(inode, func, mask, action, false, NULL);
+
 	if (!action && !violation_check)
 		return 0;
 
@@ -312,7 +323,8 @@ static int process_measurement(struct file *file, const struct cred *cred,
 	if (test_and_clear_bit(IMA_CHANGE_XATTR, &iint->atomic_flags) ||
 	    ((inode->i_sb->s_iflags & SB_I_IMA_UNVERIFIABLE_SIGNATURE) &&
 	     !(inode->i_sb->s_iflags & SB_I_UNTRUSTED_MOUNTER) &&
-	     !(action & IMA_FAIL_UNVERIFIABLE_SIGS))) {
+	     !(action & IMA_FAIL_UNVERIFIABLE_SIGS)) ||
+	    ima_get_parser() == current) {
 		iint->flags &= ~IMA_DONE_MASK;
 		iint->measured_pcrs = 0;
 	}
@@ -365,6 +377,9 @@ static int process_measurement(struct file *file, const struct cred *cred,
 
 	if (!pathbuf)	/* ima_rdwr_violation possibly pre-fetched */
 		pathname = ima_d_path(&file->f_path, &pathbuf, filename);
+
+	found_digest = ima_lookup_digest(iint->ima_hash->digest, hash_algo);
+	ima_check_parser_action(inode, func, mask, action, true, found_digest);
 
 	if (action & IMA_MEASURE)
 		ima_store_measurement(iint, file, pathname,
