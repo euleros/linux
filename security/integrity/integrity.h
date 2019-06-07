@@ -213,6 +213,14 @@ static inline void evm_load_x509(void)
 }
 #endif
 
+#ifdef CONFIG_IMA_DIGEST_LIST
+void __init ima_load_parser_digest_list(void);
+#else
+static inline void ima_load_parser_digest_list(void)
+{
+}
+#endif
+
 #ifdef CONFIG_INTEGRITY_AUDIT
 /* declarations */
 void integrity_audit_msg(int audit_msgno, struct inode *inode,

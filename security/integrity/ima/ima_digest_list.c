@@ -240,3 +240,45 @@ struct ima_digest *ima_digest_allow(struct ima_digest *digest, int action)
 
 	return digest;
 }
+
+/********************
+ * Parser execution *
+ ********************/
+static void ima_exec_parser(void)
+{
+	char *argv[2] = {NULL}, *envp[1] = {NULL};
+
+	argv[0] = (char *)CONFIG_IMA_PARSER_BINARY_PATH;
+	call_usermodehelper(argv[0], argv, envp, UMH_WAIT_PROC);
+}
+
+void __init ima_load_parser_digest_list(void)
+{
+	void *datap;
+	loff_t size;
+	int ret;
+
+	if (!(ima_digest_list_actions & ima_policy_flag))
+		return;
+
+	ima_set_parser(current);
+	ret = kernel_read_file_from_path(CONFIG_IMA_PARSER_DIGEST_LIST_PATH,
+					 &datap, &size, 0, READING_DIGEST_LIST);
+	ima_set_parser(NULL);
+
+	if (ret < 0) {
+		if (ret != -ENOENT)
+			pr_err("Unable to open file: %s (%d)",
+			       CONFIG_IMA_PARSER_DIGEST_LIST_PATH, ret);
+		return;
+	}
+
+	ret = ima_parse_compact_list(size, datap);
+
+	vfree(datap);
+
+	if (ret < 0)
+		return;
+
+	ima_exec_parser();
+}
