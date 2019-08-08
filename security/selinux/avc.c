@@ -982,7 +982,7 @@ int avc_ss_reset(struct selinux_avc *avc, u32 seqno)
 	avc_flush(avc);
 
 	for (c = avc_callbacks; c; c = c->next) {
-		if (c->events & AVC_CALLBACK_RESET) {
+		if (c->events & AVC_CALLBACK_RESET && seqno) {
 			tmprc = c->callback(AVC_CALLBACK_RESET);
 			/* save the first error encountered for the return
 			   value and continue processing the callbacks */

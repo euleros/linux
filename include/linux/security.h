@@ -75,6 +75,7 @@ struct timezone;
 
 enum lsm_event {
 	LSM_POLICY_CHANGE,
+	LSM_STATE_CHANGE,
 };
 
 /* These functions are in security/commoncap.c */

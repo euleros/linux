@@ -824,7 +824,7 @@ static void ib_policy_change_task(struct work_struct *work)
 static int ib_security_change(struct notifier_block *nb, unsigned long event,
 			      void *lsm_data)
 {
-	if (event != LSM_POLICY_CHANGE)
+	if (event != LSM_POLICY_CHANGE && event != LSM_STATE_CHANGE)
 		return NOTIFY_DONE;
 
 	schedule_work(&ib_policy_change_work);
